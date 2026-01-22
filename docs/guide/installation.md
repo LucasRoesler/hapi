@@ -19,6 +19,51 @@ codex --version
 gemini --version
 ```
 
+## Architecture
+
+HAPI has three components:
+
+| Component | Role | Required |
+|-----------|------|----------|
+| **CLI** | Wraps AI agents (Claude/Codex/Gemini), runs sessions | Yes |
+| **Server** | Central hub: persistence, real-time sync, remote access | Yes |
+| **Runner** | Background service for remote session spawning | Optional |
+
+### How they work together
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Your Machine                           │
+│                                                     │
+│  ┌─────────┐    Socket.IO    ┌─────────────┐       │
+│  │  CLI    │◄───────────────►│   Server    │       │
+│  │+ Agent  │                 │  + SQLite   │       │
+│  └─────────┘                 └──────┬──────┘       │
+│       ▲                             │ SSE          │
+│       │ spawn                       ▼              │
+│  ┌────┴────┐                 ┌─────────────┐       │
+│  │ Runner  │◄────RPC────────►│   Web App   │       │
+│  │(背景)   │                 └─────────────┘       │
+│  └─────────┘                                       │
+└─────────────────────────────────────────────────────┘
+                    │
+           [Tunnel / Public URL]
+                    │
+              ┌─────▼─────┐
+              │ Phone/Web │
+              └───────────┘
+```
+
+- **CLI**: Start a session with `hapi`. The CLI wraps your AI agent and syncs with the server.
+- **Server**: Run `hapi server`. Stores sessions, handles permissions, enables remote access.
+- **Runner**: Run `hapi runner start`. Lets you spawn sessions from phone/web without keeping a terminal open.
+
+### Typical workflows
+
+**Local only**: `hapi server` → `hapi` → work in terminal
+
+**Remote access**: `hapi server --relay` → `hapi runner start` → control from phone/web
+
 ## Install the CLI
 
 ```bash
