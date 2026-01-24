@@ -8,6 +8,7 @@ import { SessionActionMenu } from '@/components/SessionActionMenu'
 import { RenameSessionDialog } from '@/components/RenameSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from '@/lib/use-translation'
+import { useSimpleToast } from '@/lib/simple-toast'
 
 type SessionGroup = {
     directory: string
@@ -234,6 +235,7 @@ function SessionItem(props: {
     const { t } = useTranslation()
     const { session: s, onSelect, showPath = true, api, selectionMode = false, isSelected = false, onToggleSelection } = props
     const { haptic } = usePlatform()
+    const toast = useSimpleToast()
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuAnchorPoint, setMenuAnchorPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
     const [renameOpen, setRenameOpen] = useState(false)
@@ -245,6 +247,16 @@ function SessionItem(props: {
         s.id,
         s.metadata?.flavor ?? null
     )
+
+    const handleRestart = async () => {
+        try {
+            await restartSession()
+            toast.success(t('dialog.restart.success'))
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('dialog.restart.error')
+            toast.error(message)
+        }
+    }
 
     const longPressHandlers = useLongPress({
         onLongPress: (point) => {
@@ -349,7 +361,7 @@ function SessionItem(props: {
                 onRename={() => setRenameOpen(true)}
                 onArchive={() => setArchiveOpen(true)}
                 onDelete={() => setDeleteOpen(true)}
-                onRestart={!s.active ? () => void restartSession() : undefined}
+                onRestart={!s.active ? () => void handleRestart() : undefined}
                 anchorPoint={menuAnchorPoint}
             />
 
@@ -399,6 +411,7 @@ export function SessionList(props: {
 }) {
     const { t } = useTranslation()
     const { renderHeader = true, api } = props
+    const toast = useSimpleToast()
     const groups = useMemo(
         () => groupSessionsByDirectory(props.sessions),
         [props.sessions]
@@ -499,9 +512,14 @@ export function SessionList(props: {
                 setSelectedSessions(new Set())
                 setSelectionMode(false)
                 setBulkArchiveOpen(false)
+                toast.success(t('dialog.bulkArchive.success', { count: succeeded.length }))
                 props.onRefresh()
             } else if (succeeded.length > 0) {
                 // Partial success - refresh to show updated state
+                toast.info(t('dialog.bulkArchive.partialSuccess', {
+                    succeeded: succeeded.length,
+                    failed: failed.length
+                }))
                 props.onRefresh()
             }
         } catch (error) {

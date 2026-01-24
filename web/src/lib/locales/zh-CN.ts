@@ -87,6 +87,10 @@ export default {
   'dialog.bulkArchive.confirming': '归档中…',
   'dialog.bulkArchive.error.allFailed': '归档全部 {count} 个会话失败，请重试。',
   'dialog.bulkArchive.error.partialFailed': '归档 {total} 个会话中的 {failed} 个失败。成功的操作已完成。',
+  'dialog.bulkArchive.success': '成功归档 {count} 个会话',
+  'dialog.bulkArchive.partialSuccess': '归档 {succeeded} 个会话（{failed} 个失败）',
+  'dialog.restart.success': '会话重启已启动',
+  'dialog.restart.error': '会话重启失败',
   'dialog.error.default': '操作失败，请重试。',
 
   // Common buttons
