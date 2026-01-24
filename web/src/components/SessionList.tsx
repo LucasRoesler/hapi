@@ -527,8 +527,10 @@ export function SessionList(props: {
                                 <button
                                     type="button"
                                     onClick={toggleSelectionMode}
-                                    className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-text)] transition-colors"
+                                    disabled={isBulkArchiving}
+                                    className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Cancel selection"
+                                    aria-label="Cancel selection mode"
                                 >
                                     <XIcon className="h-5 w-5" />
                                 </button>
@@ -539,11 +541,12 @@ export function SessionList(props: {
                             <button
                                 type="button"
                                 onClick={handleBulkArchiveClick}
-                                disabled={selectedSessions.size === 0}
+                                disabled={selectedSessions.size === 0 || isBulkArchiving}
                                 className="px-3 py-1.5 rounded-md bg-red-500 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                                 title="Archive selected sessions"
+                                aria-label={`Archive ${selectedSessions.size} selected sessions`}
                             >
-                                Archive
+                                {isBulkArchiving ? t('dialog.bulkArchive.confirming') : 'Archive'}
                             </button>
                         </>
                     ) : (
@@ -557,6 +560,7 @@ export function SessionList(props: {
                                     onClick={toggleSelectionMode}
                                     className="p-1.5 rounded-full text-[var(--app-link)] transition-colors"
                                     title="Select sessions"
+                                    aria-label="Enable selection mode to select multiple sessions"
                                 >
                                     <CheckSquareIcon className="h-5 w-5" />
                                 </button>
