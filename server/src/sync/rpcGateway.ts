@@ -90,6 +90,10 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'killSession', {})
     }
 
+    async restartSession(sessionId: string): Promise<void> {
+        await this.sessionRpc(sessionId, 'restartSession', {})
+    }
+
     async spawnSession(
         machineId: string,
         directory: string,

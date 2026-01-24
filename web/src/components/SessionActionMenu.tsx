@@ -16,6 +16,7 @@ type SessionActionMenuProps = {
     onRename: () => void
     onArchive: () => void
     onDelete: () => void
+    onRestart?: () => void
     anchorPoint: { x: number; y: number }
     menuId?: string
 }
@@ -84,6 +85,25 @@ function TrashIcon(props: { className?: string }) {
     )
 }
 
+function RestartIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+        </svg>
+    )
+}
+
 type MenuPosition = {
     top: number
     left: number
@@ -99,6 +119,7 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
         onRename,
         onArchive,
         onDelete,
+        onRestart,
         anchorPoint,
         menuId
     } = props
@@ -121,6 +142,11 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
     const handleDelete = () => {
         onClose()
         onDelete()
+    }
+
+    const handleRestart = () => {
+        onClose()
+        if (onRestart) onRestart()
     }
 
     const updatePosition = useCallback(() => {
@@ -250,15 +276,28 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
                         {t('session.action.archive')}
                     </button>
                 ) : (
-                    <button
-                        type="button"
-                        role="menuitem"
-                        className={`${baseItemClassName} text-red-500 hover:bg-red-500/10`}
-                        onClick={handleDelete}
-                    >
-                        <TrashIcon className="text-red-500" />
-                        {t('session.action.delete')}
-                    </button>
+                    <>
+                        {onRestart && (
+                            <button
+                                type="button"
+                                role="menuitem"
+                                className={`${baseItemClassName} hover:bg-[var(--app-subtle-bg)]`}
+                                onClick={handleRestart}
+                            >
+                                <RestartIcon className="text-[var(--app-hint)]" />
+                                {t('session.action.restart')}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            className={`${baseItemClassName} text-red-500 hover:bg-red-500/10`}
+                            onClick={handleDelete}
+                        >
+                            <TrashIcon className="text-red-500" />
+                            {t('session.action.delete')}
+                        </button>
+                    </>
                 )}
             </div>
         </div>

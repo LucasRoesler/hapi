@@ -61,6 +61,7 @@ export default {
   // Session actions
   'session.action.rename': '重命名',
   'session.action.archive': '归档',
+  'session.action.restart': '重启',
   'session.action.delete': '删除',
   'session.action.copy': '复制',
 
