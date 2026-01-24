@@ -3,6 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTranslation, type Locale } from '@/lib/use-translation'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
 import { getElevenLabsSupportedLanguages, getLanguageDisplayName, type Language } from '@/lib/languages'
+import { usePWAUpdate } from '@/lib/pwa-update-context'
+import { useSimpleToast } from '@/lib/simple-toast'
 
 const locales: { value: Locale; nativeLabel: string }[] = [
     { value: 'en', nativeLabel: 'English' },
@@ -95,6 +97,8 @@ export default function SettingsPage() {
     const [isVoiceOpen, setIsVoiceOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const voiceContainerRef = useRef<HTMLDivElement>(null)
+    const { version, checkForUpdate, forceReload, isChecking } = usePWAUpdate()
+    const toast = useSimpleToast()
 
     // Voice language state - read from localStorage
     const [voiceLanguage, setVoiceLanguage] = useState<string | null>(() => {
@@ -117,6 +121,21 @@ export default function SettingsPage() {
             localStorage.setItem('hapi-voice-lang', language.code)
         }
         setIsVoiceOpen(false)
+    }
+
+    const handleCheckForUpdates = async () => {
+        try {
+            await checkForUpdate()
+            toast.success('Checked for updates')
+        } catch (error) {
+            toast.error('Failed to check for updates')
+        }
+    }
+
+    const handleForceReload = () => {
+        if (confirm('This will reload the app and clear all cached data. Continue?')) {
+            forceReload()
+        }
     }
 
     // Close dropdown when clicking outside
@@ -300,6 +319,42 @@ export default function SettingsPage() {
                                 </div>
                             )}
                         </div>
+                    </div>
+
+                    {/* App Version & Updates section */}
+                    <div className="border-b border-[var(--app-divider)]">
+                        <div className="px-3 py-2 text-xs font-semibold text-[var(--app-hint)] uppercase tracking-wide">
+                            App Version
+                        </div>
+
+                        {/* Version display */}
+                        <div className="px-3 py-3 flex items-center justify-between">
+                            <span className="text-[var(--app-fg)]">Version</span>
+                            <span className="text-[var(--app-hint)] font-mono text-sm">{version.shortSha}</span>
+                        </div>
+
+                        {/* Check for updates button */}
+                        <button
+                            type="button"
+                            onClick={handleCheckForUpdates}
+                            disabled={isChecking}
+                            className="flex w-full items-center justify-between px-3 py-3 text-left transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span className="text-[var(--app-fg)]">
+                                {isChecking ? 'Checking for updates...' : 'Check for Updates'}
+                            </span>
+                            <ChevronRightIcon className="text-[var(--app-hint)]" />
+                        </button>
+
+                        {/* Force reload button */}
+                        <button
+                            type="button"
+                            onClick={handleForceReload}
+                            className="flex w-full items-center justify-between px-3 py-3 text-left transition-colors hover:bg-[var(--app-subtle-bg)]"
+                        >
+                            <span className="text-[var(--app-fg)]">Force Reload</span>
+                            <ChevronRightIcon className="text-[var(--app-hint)]" />
+                        </button>
                     </div>
                 </div>
             </div>

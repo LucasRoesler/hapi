@@ -25,17 +25,20 @@ import { LoadingState } from '@/components/LoadingState'
 import { ToastContainer } from '@/components/ToastContainer'
 import { ToastProvider, useToast } from '@/lib/toast-context'
 import { SimpleToastProvider } from '@/lib/simple-toast'
+import { PWAUpdateProvider } from '@/lib/pwa-update-context'
 import type { SyncEvent } from '@/types/api'
 
 type ToastEvent = Extract<SyncEvent, { type: 'toast' }>
 
 export function App() {
     return (
-        <SimpleToastProvider>
-            <ToastProvider>
-                <AppInner />
-            </ToastProvider>
-        </SimpleToastProvider>
+        <PWAUpdateProvider>
+            <SimpleToastProvider>
+                <ToastProvider>
+                    <AppInner />
+                </ToastProvider>
+            </SimpleToastProvider>
+        </PWAUpdateProvider>
     )
 }
 
