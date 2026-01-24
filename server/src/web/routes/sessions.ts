@@ -207,11 +207,18 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             if (message === 'Session is already active') {
                 return c.json({ error: message }, 409)
             }
-            if (message === 'Session restart is not yet supported. Please create a new session.') {
+            if (message.includes('Session restart is not yet implemented')) {
                 return c.json({ error: message }, 501) // Not Implemented
             }
-            if (message.includes('RPC handler not registered')) {
-                return c.json({ error: 'Session restart is not supported by this session type' }, 501)
+            if (message.includes('RPC handler not registered') || message.includes('RPC socket disconnected')) {
+                return c.json({
+                    error: 'Cannot restart session: Session is not currently running. Please start a new session.'
+                }, 409)
+            }
+            if (message.includes('Timeout')) {
+                return c.json({
+                    error: 'Cannot restart session: Connection to session lost. The session may have terminated.'
+                }, 504)
             }
 
             // Generic server error for other cases

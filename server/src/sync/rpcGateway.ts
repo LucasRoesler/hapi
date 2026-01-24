@@ -91,6 +91,19 @@ export class RpcGateway {
     }
 
     async restartSession(sessionId: string): Promise<void> {
+        // Check if session has an active RPC connection before attempting restart
+        const method = `${sessionId}:restartSession`
+        const socketId = this.rpcRegistry.getSocketIdForMethod(method)
+
+        if (!socketId) {
+            throw new Error('RPC handler not registered: Session is not currently running')
+        }
+
+        const socket = this.io.of('/cli').sockets.get(socketId)
+        if (!socket) {
+            throw new Error('RPC socket disconnected: Session connection lost')
+        }
+
         await this.sessionRpc(sessionId, 'restartSession', {})
     }
 

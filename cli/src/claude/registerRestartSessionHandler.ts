@@ -27,6 +27,6 @@ export function registerRestartSessionHandler(
         logger.warn('Restart session request received - feature not yet fully implemented')
 
         // Return error indicating this feature needs proper implementation
-        throw new Error('Session restart is not yet supported. Please create a new session.')
+        throw new Error('Session restart is not yet implemented. This feature requires spawning a new CLI process with the same configuration. For now, please create a new session in the same directory.')
     })
 }
