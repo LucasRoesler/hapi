@@ -143,17 +143,23 @@ export class RpcGateway {
     }
 
     async listDirectories(machineId: string, path: string): Promise<string[]> {
-        const result = await this.machineRpc(machineId, 'list-directories', { path }) as { directories: string[] } | unknown
+        const result = await this.machineRpc(machineId, 'list-directories', { path }) as { directories: string[]; error?: string } | unknown
         if (!result || typeof result !== 'object') {
             throw new Error('Unexpected list-directories result')
         }
 
-        const directories = (result as { directories: string[] }).directories
-        if (!Array.isArray(directories)) {
+        const response = result as { directories: string[]; error?: string }
+
+        // Check for error response from CLI
+        if (response.error) {
+            throw new Error(response.error)
+        }
+
+        if (!Array.isArray(response.directories)) {
             throw new Error('Unexpected list-directories result')
         }
 
-        return directories
+        return response.directories
     }
 
     async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {

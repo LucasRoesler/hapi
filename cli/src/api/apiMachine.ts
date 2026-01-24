@@ -5,6 +5,7 @@
 import { io, type Socket } from 'socket.io-client'
 import { stat, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { Update, UpdateMachineBody } from '@hapi/protocol'
@@ -15,6 +16,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager'
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers'
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
+import { validatePath } from '../modules/common/pathSecurity'
 
 interface ServerToRunnerEvents {
     update: (data: Update) => void
@@ -84,10 +86,20 @@ export class ApiMachineClient {
             const rawPaths = Array.isArray(params?.paths) ? params.paths : []
             const uniquePaths = Array.from(new Set(rawPaths.filter((path): path is string => typeof path === 'string')))
             const exists: Record<string, boolean> = {}
+            const userHomeDir = homedir()
 
             await Promise.all(uniquePaths.map(async (path) => {
                 const trimmed = path.trim()
                 if (!trimmed) return
+
+                // Validate path is within user's home directory
+                const validation = validatePath(trimmed, userHomeDir)
+                if (!validation.valid) {
+                    logger.warn(`Path validation failed for path-exists: ${trimmed}`)
+                    exists[trimmed] = false
+                    return
+                }
+
                 try {
                     const stats = await stat(trimmed)
                     exists[trimmed] = stats.isDirectory()
@@ -99,27 +111,42 @@ export class ApiMachineClient {
             return { exists }
         })
 
-        this.rpcHandlerManager.registerHandler<{ path: string }, { directories: string[] }>('list-directories', async (params) => {
+        this.rpcHandlerManager.registerHandler<{ path: string }, { directories: string[]; error?: string }>('list-directories', async (params) => {
             const path = typeof params?.path === 'string' ? params.path.trim() : ''
             if (!path) {
-                return { directories: [] }
+                return { directories: [], error: 'Path is required' }
+            }
+
+            // Validate path is within user's home directory to prevent filesystem enumeration
+            const userHomeDir = homedir()
+            const validation = validatePath(path, userHomeDir)
+            if (!validation.valid) {
+                logger.warn(`Path validation failed for list-directories: ${path}`)
+                return { directories: [], error: validation.error ?? 'Access denied: Path is outside allowed directory' }
             }
 
             try {
                 const stats = await stat(path)
                 if (!stats.isDirectory()) {
-                    return { directories: [] }
+                    return { directories: [], error: 'Path is not a directory' }
                 }
 
                 const entries = await readdir(path, { withFileTypes: true })
                 const directories = entries
-                    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+                    .filter(entry => {
+                        // Skip hidden directories and symlinks
+                        if (entry.name.startsWith('.')) return false
+                        if (entry.isSymbolicLink()) return false
+                        return entry.isDirectory()
+                    })
                     .map(entry => join(path, entry.name))
+                    .slice(0, 100)  // Limit to 100 directories to prevent memory issues
                     .sort()
 
                 return { directories }
-            } catch {
-                return { directories: [] }
+            } catch (error) {
+                logger.debug('Failed to list directories:', error)
+                return { directories: [], error: 'Failed to list directories' }
             }
         })
     }
