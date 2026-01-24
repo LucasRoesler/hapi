@@ -179,6 +179,24 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
+    /**
+     * Resume an inactive session.
+     *
+     * **Session ID Note:**
+     * The :id parameter is the hapi session ID (visible in the UI/URL).
+     * This is NOT the Claude session ID.
+     *
+     * This endpoint will:
+     * 1. Try to reconnect to existing CLI process via RPC (if still running)
+     * 2. If RPC fails, spawn new CLI with --resume flag
+     * 3. Keep same hapi session ID throughout (no redirect)
+     * 4. Claude may create new Claude session ID (stored in metadata)
+     *
+     * **Concurrency Protection:**
+     * Multiple simultaneous resume requests for the same session will be
+     * deduplicated - only one resume operation will run, others will wait
+     * for it to complete.
+     */
     app.post('/sessions/:id/resume', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

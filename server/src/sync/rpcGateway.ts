@@ -90,6 +90,22 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'killSession', {})
     }
 
+    /**
+     * Attempt to resume a session by reconnecting to an existing CLI process via RPC.
+     *
+     * **Session ID Context:**
+     * The `sessionId` parameter is the **hapi session ID** (not the Claude session ID).
+     * This method checks if a CLI process is still running and registered for this hapi session.
+     *
+     * If the CLI process is still alive, it will respond to this RPC call and the session
+     * will be marked as active again without spawning a new process.
+     *
+     * If the CLI process has exited, this method will throw an error, which triggers
+     * the fallback to spawning a new process with Claude's --resume flag.
+     *
+     * @param sessionId - The hapi session ID to resume
+     * @throws {Error} If RPC handler not registered or socket disconnected
+     */
     async resumeSession(sessionId: string): Promise<void> {
         // Check if session has an active RPC connection before attempting resume
         const method = `${sessionId}:resumeSession`
@@ -107,6 +123,37 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'resumeSession', {})
     }
 
+    /**
+     * Spawn a new CLI process with --resume flag to continue an existing session.
+     *
+     * **Critical Session ID Distinction:**
+     *
+     * This method accepts BOTH session IDs because they serve different purposes:
+     *
+     * 1. `hapiSessionId`: The hapi session ID (stays constant)
+     *    - Tells the new CLI process which hapi session to join
+     *    - Used for RPC method registration: `{hapiSessionId}:methodName`
+     *    - Shown to user in UI and database
+     *
+     * 2. `claudeSessionIdToResume`: The Claude session ID (may change)
+     *    - Passed to Claude CLI as `--resume {claudeSessionIdToResume}`
+     *    - Used by Claude to load conversation history
+     *    - May result in Claude creating a NEW session ID
+     *
+     * **Flow:**
+     * 1. Server calls this method with both IDs
+     * 2. Runner spawns: `hapi claude --hapi-session-id {hapiSessionId} --resume-claude-session {claudeSessionIdToResume}`
+     * 3. CLI joins hapi session {hapiSessionId} and runs `claude --resume {claudeSessionIdToResume}`
+     * 4. Claude may create new session ID, which gets stored in `metadata.claudeSessionId`
+     * 5. User continues in same hapi session (no redirect needed)
+     *
+     * @param hapiSessionId - The hapi session ID to join (stays constant)
+     * @param machineId - The machine to spawn the process on
+     * @param directory - The working directory for the session
+     * @param claudeSessionIdToResume - The Claude session ID to resume from (may change)
+     * @param agent - The agent type (claude, codex, or gemini)
+     * @throws {Error} If spawn fails or returns an error
+     */
     async spawnResumedSession(
         hapiSessionId: string,
         machineId: string,
