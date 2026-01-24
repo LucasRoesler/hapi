@@ -114,6 +114,19 @@ export class ApiClient {
         }
 
         if (!res.ok) {
+            const contentType = res.headers.get('content-type')
+            if (contentType?.includes('application/json')) {
+                try {
+                    const json = await res.json() as { error?: string }
+                    const errorMessage = json.error || `HTTP ${res.status} ${res.statusText}`
+                    throw new Error(errorMessage)
+                } catch (e) {
+                    // If JSON parsing fails, fall through to text handling
+                    if (e instanceof Error && e.message !== `HTTP ${res.status} ${res.statusText}`) {
+                        throw e // Re-throw if it's our error message
+                    }
+                }
+            }
             const body = await res.text().catch(() => '')
             throw new Error(`HTTP ${res.status} ${res.statusText}: ${body}`)
         }
