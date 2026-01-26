@@ -27,6 +27,9 @@ import { join } from 'node:path'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
+import { logger } from './lib/logger'
+
+const configLogger = logger.child({ component: 'Configuration' })
 
 export type ConfigSource = 'env' | 'file' | 'default'
 
@@ -140,7 +143,7 @@ class Configuration {
         const settingsResult = await loadServerSettings(dataDir)
 
         if (settingsResult.savedToFile) {
-            console.log(`[Server] Configuration saved to ${getSettingsFile(dataDir)}`)
+            configLogger.info({ settingsFile: getSettingsFile(dataDir) }, 'Configuration saved')
         }
 
         // 4. Create configuration instance

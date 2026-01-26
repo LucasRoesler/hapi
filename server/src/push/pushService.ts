@@ -1,6 +1,7 @@
 import * as webPush from 'web-push'
 import type { Store } from '../store'
 import type { VapidKeys } from '../config/vapidKeys'
+import { logger } from '../lib/logger'
 
 export type PushPayload = {
     title: string
@@ -28,6 +29,8 @@ type PushSubscription = {
 }
 
 export class PushService {
+    private logger = logger.child({ component: 'PushService' })
+
     constructor(
         private readonly vapidKeys: VapidKeys,
         private readonly subject: string,
@@ -73,7 +76,7 @@ export class PushService {
                 return
             }
 
-            console.error('[PushService] Failed to send notification:', error)
+            this.logger.error({ error, namespace }, 'Failed to send notification')
         }
     }
 }

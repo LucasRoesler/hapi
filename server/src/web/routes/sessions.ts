@@ -5,6 +5,9 @@ import { z } from 'zod'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { logger } from '../../lib/logger'
+
+const sessionsLogger = logger.child({ component: 'SessionsRoute' })
 
 const permissionModeSchema = z.object({
     mode: PermissionModeSchema
@@ -208,10 +211,10 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
-        console.log('[POST /sessions/:id/resume] Resume request:', {
+        sessionsLogger.debug({
             sessionId: sessionResult.sessionId,
             isActive: sessionResult.session.active
-        })
+        }, 'Resume request')
 
         if (sessionResult.session.active) {
             return c.json({ error: 'Session is already active' }, 409)
@@ -219,9 +222,9 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         try {
             await engine.resumeSession(sessionResult.sessionId)
-            console.log('[POST /sessions/:id/resume] Resume successful:', {
+            sessionsLogger.info({
                 sessionId: sessionResult.sessionId
-            })
+            }, 'Resume successful')
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to resume session'

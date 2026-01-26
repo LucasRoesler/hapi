@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto'
 import type { StoredSession, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
 import { updateVersionedField } from './versionedUpdates'
+import { logger } from '../lib/logger'
+
+const sessionLogger = logger.child({ component: 'SessionStore' })
 
 type DbSessionRow = {
     id: string
@@ -50,11 +53,11 @@ export function getOrCreateSession(
     agentState: unknown,
     namespace: string
 ): StoredSession {
-    console.log('[SessionStore.getOrCreateSession] Called with:', { id, namespace })
+    sessionLogger.debug({ id, namespace }, 'Getting or creating session')
 
     // Validate UUID format if id is provided
     if (id !== null && !isValidUUID(id)) {
-        console.error('[SessionStore.getOrCreateSession] Invalid UUID format:', { id })
+        sessionLogger.error({ id }, 'Invalid UUID format')
         throw new Error(`Invalid session ID format: ${id}`)
     }
 
@@ -67,24 +70,24 @@ export function getOrCreateSession(
     ).get(sessionId, namespace) as DbSessionRow | undefined
 
     if (existing) {
-        console.log('[SessionStore.getOrCreateSession] Found existing session:', {
+        sessionLogger.debug({
             id: existing.id,
             namespace: existing.namespace
-        })
+        }, 'Found existing session')
         return toStoredSession(existing)
     }
 
     // CRITICAL ERROR HANDLING: If id was provided but not found, session doesn't exist
     if (id !== null) {
-        console.error('[SessionStore.getOrCreateSession] Session not found:', { id, namespace })
+        sessionLogger.error({ id, namespace }, 'Session not found')
         throw new Error(`Session not found: ${id}`)
     }
 
     // Create new session with generated UUID
-    console.log('[SessionStore.getOrCreateSession] Creating NEW session:', {
+    sessionLogger.info({
         id: sessionId,
         namespace
-    })
+    }, 'Creating new session')
 
     const now = Date.now()
     const metadataJson = JSON.stringify(metadata)
@@ -114,7 +117,7 @@ export function getOrCreateSession(
         agent_state: agentStateJson
     })
 
-    console.log('[SessionStore.getOrCreateSession] New session created successfully:', { id: sessionId })
+    sessionLogger.info({ id: sessionId }, 'New session created successfully')
 
     const row = getSession(db, sessionId)
     if (!row) {

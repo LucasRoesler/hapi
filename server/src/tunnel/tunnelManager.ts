@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { platform, arch, homedir } from 'node:os'
 import { isBunCompiled } from '../utils/bunCompiled'
+import { logger } from '../lib/logger'
 
 function getHapiHome(): string {
     return process.env.HAPI_HOME
@@ -77,6 +78,7 @@ export class TunnelManager {
     private readonly retryDelayMs = 3000
     private retryTimeout: ReturnType<typeof setTimeout> | null = null
     private stopped = false
+    private logger = logger.child({ component: 'TunnelManager' })
 
     constructor(config: TunnelConfig) {
         this.config = config
@@ -122,7 +124,7 @@ export class TunnelManager {
         }
 
         return new Promise((resolve, reject) => {
-            console.log(`[Tunnel] Starting tunnel to ${forwardUrl}...`)
+            this.logger.info({ forwardUrl }, 'Starting tunnel')
 
             const proc = spawn({
                 cmd: [tunwgPath, '--json', `--forward=${forwardUrl}`],
@@ -169,11 +171,11 @@ export class TunnelManager {
                                 continue
                             }
 
-                            console.log(`[Tunnel] ${trimmed}`)
+                            this.logger.debug({ output: trimmed }, 'Tunnel stdout')
                         }
                     }
                 } catch (err) {
-                    console.error('[Tunnel] stdout read error:', err)
+                    this.logger.error({ error: err }, 'Stdout read error')
                 }
             }
 
@@ -196,7 +198,7 @@ export class TunnelManager {
                         for (const line of lines) {
                             const trimmed = line.trim()
                             if (trimmed) {
-                                console.log(`[Tunnel] ${trimmed}`)
+                                this.logger.debug({ output: trimmed }, 'Tunnel stderr')
                             }
                         }
                     }
@@ -223,7 +225,7 @@ export class TunnelManager {
 
                 if (exitCode !== 0) {
                     this.state.lastError = `tunwg exited with code ${exitCode}`
-                    console.error(`[Tunnel] ${this.state.lastError}`)
+                    this.logger.error({ exitCode }, 'Tunnel process exited with error')
 
                     // Reject the promise immediately if we haven't got a URL yet
                     if (!resolved) {
@@ -236,14 +238,18 @@ export class TunnelManager {
                     if (this.state.retryCount < this.maxRetries) {
                         this.state.retryCount++
                         const delay = this.retryDelayMs * Math.pow(2, this.state.retryCount - 1)
-                        console.log(`[Tunnel] Restarting in ${delay}ms (attempt ${this.state.retryCount}/${this.maxRetries})`)
+                        this.logger.info({
+                            delayMs: delay,
+                            attempt: this.state.retryCount,
+                            maxRetries: this.maxRetries
+                        }, 'Restarting tunnel')
                         this.retryTimeout = setTimeout(() => {
                             this.spawnTunwg().catch(err => {
-                                console.error('[Tunnel] Restart failed:', err)
+                                this.logger.error({ error: err }, 'Tunnel restart failed')
                             })
                         }, delay)
                     } else {
-                        console.error('[Tunnel] Max retries reached. Tunnel disabled.')
+                        this.logger.error('Max retries reached, tunnel disabled')
                     }
                 } else if (!resolved) {
                     // Process exited cleanly but no URL - shouldn't happen, but handle gracefully

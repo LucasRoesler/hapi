@@ -27,6 +27,7 @@ import { waitForTunnelTlsReady } from './tunnel/tlsGate'
 import QRCode from 'qrcode'
 import type { Server as BunServer } from 'bun'
 import type { WebSocketData } from '@socket.io/bun-engine'
+import { logger } from './lib/logger'
 
 /** Format config source for logging */
 function formatSource(source: ConfigSource | 'generated'): string {
@@ -106,7 +107,7 @@ let notificationHub: NotificationHub | null = null
 let tunnelManager: TunnelManager | null = null
 
 async function main() {
-    console.log('HAPI Server starting...')
+    logger.info('HAPI Server starting')
 
     // Load configuration (async - loads from env/file with persistence)
     const relayApiDomain = process.env.HAPI_RELAY_API || 'relay.hapi.run'
@@ -121,40 +122,50 @@ async function main() {
 
     // Display CLI API token information
     if (config.cliApiTokenIsNew) {
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('  NEW CLI_API_TOKEN GENERATED')
-        console.log('='.repeat(70))
-        console.log('')
-        console.log(`  Token: ${config.cliApiToken}`)
-        console.log('')
-        console.log(`  Saved to: ${config.settingsFile}`)
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('')
+        logger.warn({
+            token: config.cliApiToken,
+            settingsFile: config.settingsFile
+        }, '⚠️  NEW CLI_API_TOKEN GENERATED - Save this token securely')
     } else {
-        console.log(`[Server] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
+        logger.info({
+            source: formatSource(config.sources.cliApiToken)
+        }, 'CLI_API_TOKEN loaded')
     }
 
     // Display other configuration sources
-    console.log(`[Server] HAPI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
-    console.log(`[Server] HAPI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
-    console.log(`[Server] HAPI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
+    logger.info({
+        listenHost: config.listenHost,
+        listenPort: config.listenPort,
+        publicUrl: config.publicUrl,
+        sources: {
+            listenHost: formatSource(config.sources.listenHost),
+            listenPort: formatSource(config.sources.listenPort),
+            publicUrl: formatSource(config.sources.publicUrl)
+        }
+    }, 'Server configuration loaded')
 
     if (!config.telegramEnabled) {
-        console.log('[Server] Telegram: disabled (no TELEGRAM_BOT_TOKEN)')
+        logger.info('Telegram bot disabled (no TELEGRAM_BOT_TOKEN)')
     } else {
-        const tokenSource = formatSource(config.sources.telegramBotToken)
-        console.log(`[Server] Telegram: enabled (${tokenSource})`)
-        const notificationSource = formatSource(config.sources.telegramNotification)
-        console.log(`[Server] Telegram notifications: ${config.telegramNotification ? 'enabled' : 'disabled'} (${notificationSource})`)
+        logger.info({
+            tokenSource: formatSource(config.sources.telegramBotToken),
+            notificationsEnabled: config.telegramNotification,
+            notificationSource: formatSource(config.sources.telegramNotification)
+        }, 'Telegram bot enabled')
     }
 
     // Display tunnel status
     if (relayFlag.enabled) {
-        console.log(`[Server] Tunnel: enabled (${relayFlag.source}), API: ${relayApiDomain}`)
+        logger.info({
+            enabled: true,
+            source: relayFlag.source,
+            apiDomain: relayApiDomain
+        }, 'Tunnel enabled')
     } else {
-        console.log(`[Server] Tunnel: disabled (${relayFlag.source})`)
+        logger.info({
+            enabled: false,
+            source: relayFlag.source
+        }, 'Tunnel disabled')
     }
 
     const store = new Store(config.dbPath)
@@ -218,9 +229,10 @@ async function main() {
         await happyBot.start()
     }
 
-    console.log('')
-    console.log('[Web] Server listening on :' + config.listenPort)
-    console.log('[Web] Local:  http://localhost:' + config.listenPort)
+    logger.info({
+        port: config.listenPort,
+        localUrl: `http://localhost:${config.listenPort}`
+    }, 'Web server listening')
 
     // Initialize tunnel AFTER web server is ready
     let tunnelUrl: string | null = null
@@ -236,8 +248,10 @@ async function main() {
         try {
             tunnelUrl = await tunnelManager.start()
         } catch (error) {
-            console.error('[Tunnel] Failed to start:', error instanceof Error ? error.message : error)
-            console.log('[Tunnel] Server continuing without tunnel. Restart without --relay to disable.')
+            logger.error({
+                error: error instanceof Error ? error.message : error
+            }, 'Tunnel failed to start')
+            logger.info('Server continuing without tunnel. Restart without --relay to disable.')
         }
     }
 
@@ -246,11 +260,11 @@ async function main() {
         const announceTunnelAccess = async () => {
             const tlsReady = await waitForTunnelTlsReady(tunnelUrl, manager)
             if (!tlsReady) {
-                console.log('[Tunnel] Tunnel stopped before TLS was ready.')
+                logger.info('Tunnel stopped before TLS was ready')
                 return
             }
 
-            console.log('[Web] Public: ' + tunnelUrl)
+            logger.info({ tunnelUrl }, 'Tunnel public URL ready')
 
             // Generate direct access link with server and token
             const params = new URLSearchParams({
@@ -282,12 +296,12 @@ async function main() {
 
         void announceTunnelAccess()
     }
-    console.log('')
-    console.log('HAPI Server is ready!')
+
+    logger.info('HAPI Server is ready')
 
     // Handle shutdown
     const shutdown = async () => {
-        console.log('\nShutting down...')
+        logger.info('Shutting down server')
         await tunnelManager?.stop()
         await happyBot?.stop()
         notificationHub?.stop()
@@ -305,6 +319,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error('Fatal error:', error)
+    logger.fatal({ error }, 'Fatal error during server startup')
     process.exit(1)
 })

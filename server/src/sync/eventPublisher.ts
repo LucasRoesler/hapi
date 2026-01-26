@@ -1,10 +1,12 @@
 import type { SyncEvent } from '@hapi/protocol/types'
 import type { SSEManager } from '../sse/sseManager'
+import { logger } from '../lib/logger'
 
 export type SyncEventListener = (event: SyncEvent) => void
 
 export class EventPublisher {
     private readonly listeners: Set<SyncEventListener> = new Set()
+    private logger = logger.child({ component: 'EventPublisher' })
 
     constructor(
         private readonly sseManager: SSEManager,
@@ -25,7 +27,7 @@ export class EventPublisher {
             try {
                 listener(enrichedEvent)
             } catch (error) {
-                console.error('[SyncEngine] Listener error:', error)
+                this.logger.error({ error }, 'Listener error')
             }
         }
 

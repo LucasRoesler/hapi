@@ -9,6 +9,9 @@ import { randomBytes } from 'node:crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { getOrCreateSettingsValue } from './generators'
 import { getSettingsFile, readSettings, writeSettings } from './settings'
+import { logger } from '../lib/logger'
+
+const tokenLogger = logger.child({ component: 'CliApiToken' })
 
 export interface CliApiTokenResult {
     token: string
@@ -47,7 +50,7 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
     const parsed = parseAccessToken(rawToken)
     if (!parsed) {
         if (rawToken.includes(':')) {
-            console.warn(`[WARN] CLI_API_TOKEN from ${source} contains ":" but is not a valid token. Server expects a base token without namespace.`)
+            tokenLogger.warn({ source }, 'CLI_API_TOKEN contains ":" but is not a valid token. Server expects a base token without namespace')
         }
         return { token: rawToken, didStrip: false }
     }
@@ -56,10 +59,10 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
         return { token: rawToken, didStrip: false }
     }
 
-    console.warn(
-        `[WARN] CLI_API_TOKEN from ${source} includes namespace suffix "${parsed.namespace}". ` +
-        'Server expects the base token only; stripping the suffix.'
-    )
+    tokenLogger.warn({
+        source,
+        namespace: parsed.namespace
+    }, 'CLI_API_TOKEN includes namespace suffix. Server expects the base token only; stripping the suffix')
     return { token: parsed.baseToken, didStrip: true }
 }
 
@@ -79,7 +82,7 @@ export async function getOrCreateCliApiToken(dataDir: string): Promise<CliApiTok
     if (envToken) {
         const normalized = normalizeCliApiToken(envToken, 'env')
         if (isWeakToken(normalized.token)) {
-            console.warn('[WARN] CLI_API_TOKEN appears to be weak. Consider using a stronger secret.')
+            tokenLogger.warn('CLI_API_TOKEN appears to be weak. Consider using a stronger secret')
         }
 
         // Persist env token to file if not already saved (prevents token loss on env var issues)

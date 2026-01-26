@@ -12,6 +12,7 @@ import { formatSessionNotification, createNotificationKeyboard } from './session
 import { getAgentName } from '../notifications/sessionInfo'
 import type { NotificationChannel } from '../notifications/notificationTypes'
 import type { Store } from '../store'
+import { logger } from '../lib/logger'
 
 export interface BotContext extends Context {
     // Extended context for future use
@@ -33,6 +34,7 @@ export class HappyBot implements NotificationChannel {
     private isRunning = false
     private readonly publicUrl: string
     private readonly store: Store
+    private logger = logger.child({ component: 'HappyBot' })
 
     constructor(config: HappyBotConfig) {
         this.syncEngine = config.syncEngine
@@ -69,13 +71,13 @@ export class HappyBot implements NotificationChannel {
     async start(): Promise<void> {
         if (this.isRunning) return
 
-        console.log('[HAPIBot] Starting Telegram bot...')
+        this.logger.info('Starting Telegram bot')
         this.isRunning = true
 
         // Start polling
         this.bot.start({
             onStart: (botInfo) => {
-                console.log(`[HAPIBot] Bot @${botInfo.username} started`)
+                this.logger.info({ username: botInfo.username }, 'Telegram bot started')
             }
         })
     }
@@ -86,7 +88,7 @@ export class HappyBot implements NotificationChannel {
     async stop(): Promise<void> {
         if (!this.isRunning) return
 
-        console.log('[HAPIBot] Stopping Telegram bot...')
+        this.logger.info('Stopping Telegram bot')
 
         await this.bot.stop()
         this.isRunning = false
@@ -98,7 +100,7 @@ export class HappyBot implements NotificationChannel {
     private setupMiddleware(): void {
         // Error handling middleware
         this.bot.catch((err) => {
-            console.error('[HAPIBot] Error:', err.message)
+            this.logger.error({ error: err.message }, 'Telegram bot error')
         })
     }
 
@@ -207,7 +209,7 @@ export class HappyBot implements NotificationChannel {
                     { reply_markup: keyboard }
                 )
             } catch (error) {
-                console.error(`[HAPIBot] Failed to send ready notification to chat ${chatId}:`, error)
+                this.logger.error({ chatId, error }, 'Failed to send ready notification')
             }
         }
     }
@@ -234,7 +236,7 @@ export class HappyBot implements NotificationChannel {
                     reply_markup: keyboard
                 })
             } catch (error) {
-                console.error(`[HAPIBot] Failed to send notification to chat ${chatId}:`, error)
+                this.logger.error({ chatId, error }, 'Failed to send permission notification')
             }
         }
     }
