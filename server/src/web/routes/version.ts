@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { WebAppEnv } from '../middleware/auth'
 // @ts-ignore - version.json is generated at build time
 import versionFile from '../../../dist/version.json' assert { type: 'file' }
+import { logger } from '../../lib/logger'
 
 interface VersionInfo {
     sha: string
@@ -26,7 +27,7 @@ async function loadVersion(): Promise<VersionInfo> {
         cachedVersion = JSON.parse(content)
         return cachedVersion!
     } catch (error) {
-        console.error('Failed to load version.json:', error)
+        logger.error({ component: 'Version', error }, 'Failed to load version.json')
         // Fallback version
         cachedVersion = {
             sha: 'unknown',

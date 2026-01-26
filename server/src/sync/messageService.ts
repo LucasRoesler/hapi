@@ -2,6 +2,7 @@ import type { AttachmentMetadata, DecryptedMessage } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import { EventPublisher } from './eventPublisher'
+import { logger } from '../lib/logger'
 
 export class MessageService {
     constructor(
@@ -20,18 +21,18 @@ export class MessageService {
             hasMore: boolean
         }
     } {
-        console.log('[MessageService.getMessagesPage] Fetching messages:', {
+        logger.debug({ component: 'MessageService',
             sessionId,
             limit: options.limit,
             beforeSeq: options.beforeSeq
-        })
+        }, 'Fetching messages page')
 
         const stored = this.store.messages.getMessages(sessionId, options.limit, options.beforeSeq ?? undefined)
 
-        console.log('[MessageService.getMessagesPage] Database returned:', {
+        logger.debug({ component: 'MessageService',
             sessionId,
             storedCount: stored.length
-        })
+        }, 'Database returned messages')
 
         const messages: DecryptedMessage[] = stored.map((message) => ({
             id: message.id,
@@ -53,12 +54,12 @@ export class MessageService {
         const hasMore = nextBeforeSeq !== null
             && this.store.messages.getMessages(sessionId, 1, nextBeforeSeq).length > 0
 
-        console.log('[MessageService.getMessagesPage] Returning:', {
+        logger.debug({ component: 'MessageService',
             sessionId,
             messageCount: messages.length,
             hasMore,
             nextBeforeSeq
-        })
+        }, 'Returning messages page')
 
         return {
             messages,

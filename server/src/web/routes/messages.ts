@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { logger } from '../../lib/logger'
 
 const querySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -35,22 +36,19 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const limit = parsed.success ? (parsed.data.limit ?? 50) : 50
         const beforeSeq = parsed.success ? (parsed.data.beforeSeq ?? null) : null
 
-        console.log('[GET /sessions/:id/messages] Request received:', {
+        logger.debug({ component: 'MessagesRoute',
             sessionId,
             limit,
-            beforeSeq,
-            query: c.req.query()
-        })
+            beforeSeq
+        }, 'GET messages request')
 
         const result = engine.getMessagesPage(sessionId, { limit, beforeSeq })
 
-        console.log('[GET /sessions/:id/messages] Response:', {
+        logger.debug({ component: 'MessagesRoute',
             sessionId,
             messageCount: result.messages.length,
-            hasMore: result.page.hasMore,
-            firstMessageSeq: result.messages[0]?.seq,
-            lastMessageSeq: result.messages[result.messages.length - 1]?.seq
-        })
+            hasMore: result.page.hasMore
+        }, 'GET messages response')
 
         return c.json(result)
     })

@@ -1,6 +1,7 @@
 import type { ModelMode, PermissionMode } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
+import { logger } from '../lib/logger'
 
 export type RpcCommandResponse = {
     success: boolean
@@ -161,13 +162,14 @@ export class RpcGateway {
         sessionIdToResume: string,
         agent: 'claude' | 'codex' | 'gemini' = 'claude'
     ): Promise<void> {
-        console.log('[RpcGateway.spawnResumedSession] Calling machineRpc:', {
+        logger.debug({
+            component: 'RpcGateway',
             hapiSessionId,
             machineId,
             directory,
             sessionIdToResume,
             agent
-        })
+        }, 'Calling spawn-resumed-session RPC')
 
         const result = await this.machineRpc(
             machineId,
@@ -180,34 +182,25 @@ export class RpcGateway {
             }
         )
 
-        console.log('[RpcGateway.spawnResumedSession] machineRpc result:', {
-            result,
-            hapiSessionId
-        })
+        logger.debug({ component: 'RpcGateway', hapiSessionId, machineId, result }, 'RPC call completed')
 
         if (result && typeof result === 'object') {
             const obj = result as Record<string, unknown>
 
             // Check for domain-specific error format
             if (obj.type === 'error' && typeof obj.errorMessage === 'string') {
-                console.log('[RpcGateway.spawnResumedSession] Error from machineRpc:', {
-                    errorMessage: obj.errorMessage,
-                    hapiSessionId
-                })
+                logger.error({ component: 'RpcGateway', hapiSessionId, machineId, errorMessage: obj.errorMessage }, 'Domain error from RPC handler')
                 throw new Error(obj.errorMessage)
             }
 
             // Check for generic RPC error format (from RpcHandlerManager exception handling)
             if (obj.error && typeof obj.error === 'string') {
-                console.log('[RpcGateway.spawnResumedSession] RPC handler error:', {
-                    error: obj.error,
-                    hapiSessionId
-                })
+                logger.error({ component: 'RpcGateway', hapiSessionId, machineId, error: obj.error }, 'Infrastructure error from RPC handler')
                 throw new Error(obj.error)
             }
         }
 
-        console.log('[RpcGateway.spawnResumedSession] Completed successfully:', { hapiSessionId })
+        logger.debug({ component: 'RpcGateway', hapiSessionId, machineId }, 'spawn-resumed-session completed successfully')
     }
 
     async spawnSession(

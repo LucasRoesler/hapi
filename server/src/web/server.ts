@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
+import { logger as honoLogger } from 'hono/logger'
+import { logger } from '../lib/logger'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { serveStatic } from 'hono/bun'
@@ -19,6 +20,7 @@ import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
 import { createVoiceRoutes } from './routes/voice'
 import { createVersionRoutes } from './routes/version'
+import { registerAdminRoutes } from './routes/admin'
 import type { SSEManager } from '../sse/sseManager'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Server as BunServer } from 'bun'
@@ -68,7 +70,7 @@ function createWebApp(options: {
 }): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.use('*', logger())
+    app.use('*', honoLogger())
 
     // Health check endpoint (no auth required)
     app.get('/health', (c) => c.json({ status: 'ok' }))
@@ -98,6 +100,7 @@ function createWebApp(options: {
     app.route('/api', createGitRoutes(options.getSyncEngine))
     app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
     app.route('/api', createVoiceRoutes())
+    registerAdminRoutes(app)
 
     // Skip static serving in relay mode, show helpful message on root
     if (options.relayMode) {
@@ -246,8 +249,12 @@ export async function startWebServer(options: {
         }
     })
 
-    console.log(`[Web] server listening on ${configuration.listenHost}:${configuration.listenPort}`)
-    console.log(`[Web] public URL: ${configuration.publicUrl}`)
+    logger.info({
+        component: 'WebServer',
+        listenHost: configuration.listenHost,
+        listenPort: configuration.listenPort,
+        publicUrl: configuration.publicUrl
+    }, 'Web server initialized')
 
     return server
 }

@@ -8,6 +8,7 @@
 import { InlineKeyboard } from 'grammy'
 import type { Session, SyncEngine } from '../sync/syncEngine'
 import { parseCallbackData, findSessionByPrefix } from './renderer'
+import { logger } from '../lib/logger'
 
 // Callback action types (simplified - only permission actions)
 export const ACTIONS = {
@@ -99,7 +100,7 @@ export async function handleCallback(
                 await ctx.answerCallback('Unknown action')
         }
     } catch (error) {
-        console.error('[Callback] Error:', error)
+        logger.error({ component: 'TelegramCallbacks', error }, 'Callback handler error')
         await ctx.answerCallback('An error occurred')
     }
 }
