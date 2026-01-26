@@ -158,9 +158,17 @@ export class RpcGateway {
         hapiSessionId: string,
         machineId: string,
         directory: string,
-        claudeSessionIdToResume: string,
+        sessionIdToResume: string,
         agent: 'claude' | 'codex' | 'gemini' = 'claude'
     ): Promise<void> {
+        console.log('[RpcGateway.spawnResumedSession] Calling machineRpc:', {
+            hapiSessionId,
+            machineId,
+            directory,
+            sessionIdToResume,
+            agent
+        })
+
         const result = await this.machineRpc(
             machineId,
             'spawn-resumed-session',
@@ -168,16 +176,38 @@ export class RpcGateway {
                 hapiSessionId,
                 directory,
                 agent,
-                claudeSessionIdToResume
+                sessionIdToResume
             }
         )
 
+        console.log('[RpcGateway.spawnResumedSession] machineRpc result:', {
+            result,
+            hapiSessionId
+        })
+
         if (result && typeof result === 'object') {
             const obj = result as Record<string, unknown>
+
+            // Check for domain-specific error format
             if (obj.type === 'error' && typeof obj.errorMessage === 'string') {
+                console.log('[RpcGateway.spawnResumedSession] Error from machineRpc:', {
+                    errorMessage: obj.errorMessage,
+                    hapiSessionId
+                })
                 throw new Error(obj.errorMessage)
             }
+
+            // Check for generic RPC error format (from RpcHandlerManager exception handling)
+            if (obj.error && typeof obj.error === 'string') {
+                console.log('[RpcGateway.spawnResumedSession] RPC handler error:', {
+                    error: obj.error,
+                    hapiSessionId
+                })
+                throw new Error(obj.error)
+            }
         }
+
+        console.log('[RpcGateway.spawnResumedSession] Completed successfully:', { hapiSessionId })
     }
 
     async spawnSession(
