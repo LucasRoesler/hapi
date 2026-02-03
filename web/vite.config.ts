@@ -53,11 +53,14 @@ export default defineConfig({
         allowedHosts: ['hapidev.weishu.me'],
         proxy: {
             '/api': {
-                target: 'http://127.0.0.1:3006',
-                changeOrigin: true
+                target: process.env.VITE_API_TARGET || 'http://127.0.0.1:3006',
+                changeOrigin: true,
+                secure: true
             },
             '/socket.io': {
-                target: 'http://127.0.0.1:3006',
+                target: process.env.VITE_API_TARGET || 'http://127.0.0.1:3006',
+                changeOrigin: true,
+                secure: true,
                 ws: true
             }
         }
