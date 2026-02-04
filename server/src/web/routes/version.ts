@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { join } from 'node:path'
 import type { WebAppEnv } from '../middleware/auth'
 
 interface VersionInfo {
@@ -18,8 +19,8 @@ async function loadVersion(): Promise<VersionInfo> {
     }
 
     try {
-        // Load version.json using Bun's file API
-        const file = Bun.file('../../../dist/version.json')
+        // Load version.json using Bun's file API (relative to this source file)
+        const file = Bun.file(join(import.meta.dir, '../../../dist/version.json'))
         const content = await file.text()
         cachedVersion = JSON.parse(content)
         return cachedVersion!
