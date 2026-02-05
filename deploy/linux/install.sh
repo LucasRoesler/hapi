@@ -388,6 +388,7 @@ setup_tailscale() {
 
         if [ -n "$TAILSCALE_SERVICE" ]; then
             print_info "Accessible via: https://$TAILSCALE_SERVICE.tailnet"
+            print_warning "If this is the first time using this service, you may need to approve it in the Tailscale admin UI"
         else
             print_info "Run 'tailscale serve status' to see the access URL"
         fi
