@@ -105,3 +105,13 @@ export function getMessagesAfter(
 
     return rows.map(toStoredMessage)
 }
+
+export function deleteAllMessages(
+    db: Database,
+    sessionId: string
+): number {
+    const result = db.prepare(
+        'DELETE FROM messages WHERE session_id = ?'
+    ).run(sessionId)
+    return result.changes
+}

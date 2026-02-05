@@ -78,6 +78,22 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Message requires text or attachments' }, 400)
         }
 
+        // Check for /clear command - handle specially
+        const trimmedText = parsed.data.text.trim()
+        if (trimmedText === '/clear') {
+            // Delete all messages from database
+            const count = engine.clearSessionMessages(sessionId)
+
+            // Still send /clear to CLI so it can clear its context
+            await engine.sendMessage(sessionId, {
+                text: parsed.data.text,
+                localId: parsed.data.localId,
+                sentFrom: 'webapp'
+            })
+
+            return c.json({ ok: true, cleared: true, count })
+        }
+
         await engine.sendMessage(sessionId, {
             text: parsed.data.text,
             localId: parsed.data.localId,

@@ -4,12 +4,10 @@ import type { AttachmentMetadata, DecryptedMessage } from '@/types/api'
 import { makeClientSideId } from '@/lib/messages'
 import {
     appendOptimisticMessage,
-    clearMessageWindow,
     getMessageWindowState,
     updateMessageStatus,
 } from '@/lib/message-window-store'
 import { usePlatform } from '@/hooks/usePlatform'
-import { useSimpleToast } from '@/lib/simple-toast'
 
 type SendMessageInput = {
     sessionId: string
@@ -39,7 +37,6 @@ export function useSendMessage(api: ApiClient | null, sessionId: string | null):
     isSending: boolean
 } {
     const { haptic } = usePlatform()
-    const toast = useSimpleToast()
 
     const mutation = useMutation({
         mutationFn: async (input: SendMessageInput) => {
@@ -49,21 +46,9 @@ export function useSendMessage(api: ApiClient | null, sessionId: string | null):
 
             // Send message to backend
             await api.sendMessage(input.sessionId, input.text, input.localId, input.attachments)
-
-            // Detect clear command and handle after successful send
-            const isClearCommand = input.text.trim() === '/clear'
-            if (isClearCommand) {
-                // Wait a bit for the backend to process and for the CLI to handle the clear
-                // This gives the agent time to acknowledge the clear command
-                await new Promise(resolve => setTimeout(resolve, 500))
-
-                // Now clear the UI
-                clearMessageWindow(input.sessionId)
-                toast.success('Chat history cleared')
-            }
         },
         onMutate: async (input) => {
-            // Don't show /clear as an optimistic message - it will just be cleared anyway
+            // Don't show /clear as an optimistic message - the backend will handle it
             const isClearCommand = input.text.trim() === '/clear'
             if (isClearCommand) {
                 return

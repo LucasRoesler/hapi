@@ -127,6 +127,10 @@ export function useSSE(options: {
                 ingestIncomingMessages(event.sessionId, [event.message])
             }
 
+            if (event.type === 'messages-cleared') {
+                clearMessageWindow(event.sessionId)
+            }
+
             if (event.type === 'session-added' || event.type === 'session-updated' || event.type === 'session-removed') {
                 void queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
                 if ('sessionId' in event) {

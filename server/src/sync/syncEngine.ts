@@ -210,6 +210,18 @@ export class SyncEngine {
         await this.messageService.sendMessage(sessionId, payload)
     }
 
+    clearSessionMessages(sessionId: string): number {
+        const count = this.store.messages.deleteAllMessages(sessionId)
+
+        this.eventPublisher.emit({
+            type: 'messages-cleared',
+            sessionId
+        })
+
+        console.log(`[SyncEngine] Cleared ${count} messages for session ${sessionId}`)
+        return count
+    }
+
     async approvePermission(
         sessionId: string,
         requestId: string,
