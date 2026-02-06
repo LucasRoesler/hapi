@@ -14,6 +14,7 @@ BUILD_FROM_SOURCE=false
 INSTALL_PATH="$HOME/.local/bin"
 SETUP_SYSTEMD=true
 SETUP_TAILSCALE=false
+TAILSCALE_SERVICE=""
 HAPI_PORT=3006
 SERVICE_NAME="hapi"
 SKIP_CONFIRMATION=false
@@ -50,6 +51,7 @@ OPTIONS:
     -p, --path PATH          Installation path (default: ~/.local/bin)
     -s, --skip-systemd       Skip systemd service setup
     -t, --tailscale          Setup Tailscale serve for remote access
+    --ts-service NAME        Tailscale service name for preconfigured service binding
     --port PORT              Port for Hapi server (default: 3006)
     -y, --yes                Skip confirmation prompts
     -h, --help               Show this help message
@@ -66,6 +68,9 @@ EXAMPLES:
 
     # Install with Tailscale serve enabled
     $0 --tailscale
+
+    # Install with Tailscale serve using a named service (preconfigured in Tailscale admin)
+    $0 --tailscale --ts-service svc:hapi
 
     # Custom installation path without systemd
     $0 --path /usr/local/bin --skip-systemd
@@ -95,6 +100,10 @@ while [[ $# -gt 0 ]]; do
         -t|--tailscale)
             SETUP_TAILSCALE=true
             shift
+            ;;
+        --ts-service)
+            TAILSCALE_SERVICE="$2"
+            shift 2
             ;;
         --port)
             HAPI_PORT="$2"
@@ -283,7 +292,6 @@ setup_systemd() {
     local hapi_binary="$INSTALL_PATH/hapi"
     local server_service="${SERVICE_NAME}-server.service"
     local runner_service="${SERVICE_NAME}-runner.service"
-    local tailscale_service="tailscale-serve-${SERVICE_NAME}.service"
 
     # Generate server service
     print_info "Creating $server_service..."
@@ -329,30 +337,6 @@ Environment="PATH=$INSTALL_PATH:$PATH"
 WantedBy=default.target
 EOF
 
-    # Setup Tailscale serve if requested
-    if [ "$SETUP_TAILSCALE" = true ]; then
-        print_info "Creating $tailscale_service..."
-        cat > "$systemd_user_dir/$tailscale_service" << EOF
-[Unit]
-Description=Tailscale Serve for $SERVICE_NAME Server
-After=$server_service
-Requires=$server_service
-PartOf=$server_service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/tailscale serve --bg $HAPI_PORT
-ExecStop=/usr/bin/tailscale serve reset
-StandardOutput=journal
-StandardError=journal
-Environment="PATH=$INSTALL_PATH:$PATH"
-
-[Install]
-WantedBy=default.target
-EOF
-    fi
-
     # Reload systemd
     print_info "Reloading systemd daemon..."
     systemctl --user daemon-reload
@@ -361,10 +345,6 @@ EOF
     print_info "Enabling services..."
     systemctl --user enable "$server_service"
     systemctl --user enable "$runner_service"
-
-    if [ "$SETUP_TAILSCALE" = true ]; then
-        systemctl --user enable "$tailscale_service"
-    fi
 
     print_success "Systemd services created and enabled"
 
@@ -378,28 +358,55 @@ EOF
             print_info "To start services later, run:"
             echo "    systemctl --user start $server_service"
             echo "    systemctl --user start $runner_service"
-            if [ "$SETUP_TAILSCALE" = true ]; then
-                echo "    systemctl --user start $tailscale_service"
-            fi
         fi
     else
         start_services
     fi
 }
 
+# Setup Tailscale serve
+setup_tailscale() {
+    print_info "Setting up Tailscale serve..."
+
+    # Build the tailscale serve command
+    local ts_cmd="tailscale serve --bg"
+
+    if [ -n "$TAILSCALE_SERVICE" ]; then
+        # Use named service with HTTPS on port 443
+        ts_cmd="$ts_cmd --service=$TAILSCALE_SERVICE --https=443 127.0.0.1:$HAPI_PORT"
+        print_info "Configuring Tailscale serve with named service: $TAILSCALE_SERVICE"
+    else
+        # Use default port-based serve
+        ts_cmd="$ts_cmd $HAPI_PORT"
+        print_info "Configuring Tailscale serve on port: $HAPI_PORT"
+    fi
+
+    # Run the command
+    if eval "$ts_cmd"; then
+        print_success "Tailscale serve configured successfully"
+        print_info "Your $SERVICE_NAME server is now accessible on your Tailnet"
+
+        if [ -n "$TAILSCALE_SERVICE" ]; then
+            print_info "Accessible via: https://$TAILSCALE_SERVICE.tailnet"
+            print_warning "If this is the first time using this service, you may need to approve it in the Tailscale admin UI"
+        else
+            print_info "Run 'tailscale serve status' to see the access URL"
+        fi
+    else
+        print_error "Failed to configure Tailscale serve"
+        print_info "You can manually configure it later with:"
+        echo "    $ts_cmd"
+    fi
+}
+
 start_services() {
     local server_service="${SERVICE_NAME}-server.service"
     local runner_service="${SERVICE_NAME}-runner.service"
-    local tailscale_service="tailscale-serve-${SERVICE_NAME}.service"
 
     print_info "Starting $SERVICE_NAME services..."
 
     systemctl --user start "$server_service"
     systemctl --user start "$runner_service"
-
-    if [ "$SETUP_TAILSCALE" = true ]; then
-        systemctl --user start "$tailscale_service"
-    fi
 
     sleep 2
 
@@ -417,23 +424,12 @@ start_services() {
         print_warning "$SERVICE_NAME runner status unknown. Check logs with:"
         echo "    journalctl --user -u $runner_service"
     fi
-
-    if [ "$SETUP_TAILSCALE" = true ]; then
-        if systemctl --user is-active --quiet "$tailscale_service"; then
-            print_success "Tailscale serve is active"
-            print_info "Your $SERVICE_NAME server is now accessible on your Tailnet"
-        else
-            print_warning "Tailscale serve status unknown. Check logs with:"
-            echo "    journalctl --user -u $tailscale_service"
-        fi
-    fi
 }
 
 # Print installation summary
 print_summary() {
     local server_service="${SERVICE_NAME}-server.service"
     local runner_service="${SERVICE_NAME}-runner.service"
-    local tailscale_service="tailscale-serve-${SERVICE_NAME}.service"
 
     echo ""
     echo "======================================"
@@ -454,7 +450,7 @@ print_summary() {
         echo "  Stop services:     systemctl --user stop $server_service"
         echo "  Service status:    systemctl --user status $server_service"
         if [ "$SETUP_TAILSCALE" = true ]; then
-            echo "  Tailscale status:  systemctl --user status $tailscale_service"
+            echo "  Tailscale status:  tailscale serve status"
         fi
     else
         echo "To start Hapi manually:"
@@ -483,6 +479,9 @@ main() {
     echo "  Installation path: $INSTALL_PATH"
     echo "  Setup systemd: $SETUP_SYSTEMD"
     echo "  Setup Tailscale: $SETUP_TAILSCALE"
+    if [ "$SETUP_TAILSCALE" = true ] && [ -n "$TAILSCALE_SERVICE" ]; then
+        echo "  Tailscale service: $TAILSCALE_SERVICE"
+    fi
     echo "  Server port: $HAPI_PORT"
     echo ""
 
@@ -505,6 +504,10 @@ main() {
 
     if [ "$SETUP_SYSTEMD" = true ]; then
         setup_systemd
+    fi
+
+    if [ "$SETUP_TAILSCALE" = true ]; then
+        setup_tailscale
     fi
 
     print_summary
