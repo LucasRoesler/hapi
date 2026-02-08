@@ -130,7 +130,8 @@ export function HappyComposer(props: {
     const [snapIndex, setSnapIndex] = useState<SnapIndex>(0)
     const [isDragging, setIsDragging] = useState(false)
     const [dragPreviewHeight, setDragPreviewHeight] = useState<number | null>(null)
-    const [draftRestored, setDraftRestored] = useState(false)
+    // Track which sessions have had drafts restored (per-session tracking)
+    const restoredSessions = useRef<Set<string>>(new Set())
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const prevControlledByUser = useRef(controlledByUser)
@@ -158,7 +159,7 @@ export function HappyComposer(props: {
 
     // Draft persistence: Fetch and merge drafts on session open
     useEffect(() => {
-        if (!sessionId || draftRestored) return
+        if (!sessionId || restoredSessions.current.has(sessionId)) return
 
         const fetchAndMergeDraft = async () => {
             try {
@@ -192,16 +193,12 @@ export function HappyComposer(props: {
                 }
             }
 
-            setDraftRestored(true)
+            // Mark this session as restored
+            restoredSessions.current.add(sessionId)
         }
 
         fetchAndMergeDraft()
-    }, [sessionId, api, draftRestored])
-
-    // Draft persistence: Reset flag on session switch
-    useEffect(() => {
-        setDraftRestored(false)
-    }, [sessionId])
+    }, [sessionId, api])
 
     // Draft persistence: Debounced save on text change (both local + server)
     const debouncedSave = useMemo(() =>
@@ -228,9 +225,14 @@ export function HappyComposer(props: {
                     // Local draft still saved, will sync on next session open
                 }
             } else {
+                // Clear locally first (optimistic)
                 clearDraftLocal(sid)
-                // Clear on server too (async)
-                apiClient.clearDraft(sid).catch(err => console.error('[HappyComposer] Failed to clear draft:', err))
+                // Clear on server and wait for confirmation
+                try {
+                    await apiClient.clearDraft(sid)
+                } catch (err) {
+                    console.error('[HappyComposer] Failed to clear draft on server:', err)
+                }
             }
         }, 1000), // 1 second debounce for server sync
     [])
@@ -685,11 +687,17 @@ export function HappyComposer(props: {
     const showAbortButton = true
     const voiceEnabled = Boolean(onVoiceToggle)
 
-    const handleSend = useCallback(() => {
+    const handleSend = useCallback(async () => {
         api.composer().send()
-        // Clear draft locally and on server
+        // Clear draft locally first (optimistic)
         clearDraftLocal(sessionId)
-        api.clearDraft(sessionId).catch(err => console.error('[HappyComposer] Failed to clear draft:', err))
+        // Clear on server and wait for confirmation
+        try {
+            await api.clearDraft(sessionId)
+        } catch (err) {
+            console.error('[HappyComposer] Failed to clear draft on server:', err)
+            // Local draft already cleared, user experience not affected
+        }
     }, [api, sessionId])
 
     const overlays = useMemo(() => {

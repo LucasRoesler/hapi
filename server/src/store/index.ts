@@ -298,10 +298,11 @@ export class Store {
             this.db.exec('BEGIN')
             this.db.exec(`
                 CREATE TABLE IF NOT EXISTS session_drafts (
-                    session_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
                     namespace TEXT NOT NULL,
                     draft_text TEXT NOT NULL,
                     draft_timestamp INTEGER NOT NULL,
+                    PRIMARY KEY (session_id, namespace),
                     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
                 );
             `)

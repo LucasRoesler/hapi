@@ -41,27 +41,69 @@ export function setDraft(
     text: string,
     timestamp: number
 ): DraftData {
-    // Last-Write-Wins logic: Check if existing draft is newer
-    const existing = getDraft(db, sessionId, namespace)
-    if (existing && existing.timestamp > timestamp) {
-        // Reject older update, return current draft
-        console.log('[Drafts] Rejected older draft update', {
+    // Validate timestamp is reasonable (not too far in past or future)
+    const serverTime = Date.now()
+    const maxAllowedTimestamp = serverTime + 5000 // 5 seconds future tolerance for clock skew
+    const minAllowedTimestamp = serverTime - 3600000 // 1 hour past tolerance
+
+    if (timestamp > maxAllowedTimestamp) {
+        console.warn('[Drafts] Rejected future timestamp', {
             sessionId,
-            incoming: timestamp,
-            existing: existing.timestamp
+            timestamp,
+            serverTime,
+            diff: timestamp - serverTime
         })
-        return existing
+        // Use server time instead
+        timestamp = serverTime
+    } else if (timestamp < minAllowedTimestamp) {
+        console.warn('[Drafts] Rejected timestamp too far in past', {
+            sessionId,
+            timestamp,
+            serverTime,
+            diff: serverTime - timestamp
+        })
+        // Use server time instead
+        timestamp = serverTime
     }
 
-    // Accept newer update
-    db.prepare(`
-        INSERT OR REPLACE INTO session_drafts (session_id, namespace, draft_text, draft_timestamp)
-        VALUES (?, ?, ?, ?)
-    `).run(sessionId, namespace, text, timestamp)
+    // Wrap check-and-set in transaction for atomicity
+    db.exec('BEGIN IMMEDIATE')
+    try {
+        // Last-Write-Wins logic: Check if existing draft is newer
+        const row = db.prepare(`
+            SELECT draft_text, draft_timestamp
+            FROM session_drafts
+            WHERE session_id = ? AND namespace = ?
+        `).get(sessionId, namespace) as Pick<DraftRow, 'draft_text' | 'draft_timestamp'> | undefined
 
-    console.log('[Drafts] Saved draft', { sessionId, timestamp, length: text.length })
+        if (row && row.draft_timestamp > timestamp) {
+            // Reject older update, return current draft
+            db.exec('ROLLBACK')
+            console.log('[Drafts] Rejected older draft update', {
+                sessionId,
+                incoming: timestamp,
+                existing: row.draft_timestamp
+            })
+            return {
+                text: row.draft_text,
+                timestamp: row.draft_timestamp
+            }
+        }
 
-    return { text, timestamp }
+        // Accept newer update
+        db.prepare(`
+            INSERT OR REPLACE INTO session_drafts (session_id, namespace, draft_text, draft_timestamp)
+            VALUES (?, ?, ?, ?)
+        `).run(sessionId, namespace, text, timestamp)
+
+        db.exec('COMMIT')
+        console.log('[Drafts] Saved draft', { sessionId, timestamp, length: text.length })
+
+        return { text, timestamp }
+    } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+    }
 }
 
 /**
