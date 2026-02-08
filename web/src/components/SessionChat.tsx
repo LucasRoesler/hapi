@@ -10,6 +10,7 @@ import { reduceChatBlocks } from '@/chat/reducer'
 import { reconcileChatBlocks } from '@/chat/reconcile'
 import { HappyComposer } from '@/components/AssistantChat/HappyComposer'
 import { HappyThread } from '@/components/AssistantChat/HappyThread'
+import { HappyChatProvider } from '@/components/AssistantChat/context'
 import { useHappyRuntime } from '@/lib/assistant-runtime'
 import { createAttachmentAdapter } from '@/lib/attachmentAdapter'
 import { SessionHeader } from '@/components/SessionHeader'
@@ -272,50 +273,59 @@ export function SessionChat(props: {
             ) : null}
 
             <AssistantRuntimeProvider runtime={runtime}>
-                <div className="relative flex min-h-0 flex-1 flex-col">
-                    <HappyThread
-                        key={props.session.id}
-                        api={props.api}
-                        sessionId={props.session.id}
-                        metadata={props.session.metadata}
-                        disabled={controlsDisabled}
-                        onRefresh={props.onRefresh}
-                        onRetryMessage={props.onRetryMessage}
-                        onFlushPending={props.onFlushPending}
-                        onAtBottomChange={props.onAtBottomChange}
-                        isLoadingMessages={props.isLoadingMessages}
-                        messagesWarning={props.messagesWarning}
-                        hasMoreMessages={props.hasMoreMessages}
-                        isLoadingMoreMessages={props.isLoadingMoreMessages}
-                        onLoadMore={props.onLoadMore}
-                        pendingCount={props.pendingCount}
-                        rawMessagesCount={props.messages.length}
-                        normalizedMessagesCount={normalizedMessages.length}
-                        messagesVersion={props.messagesVersion}
-                        forceScrollToken={forceScrollToken}
-                    />
+                <HappyChatProvider value={{
+                    api: props.api,
+                    sessionId: props.session.id,
+                    metadata: props.session.metadata,
+                    disabled: controlsDisabled,
+                    onRefresh: props.onRefresh,
+                    onRetryMessage: props.onRetryMessage
+                }}>
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                        <HappyThread
+                            key={props.session.id}
+                            api={props.api}
+                            sessionId={props.session.id}
+                            metadata={props.session.metadata}
+                            disabled={controlsDisabled}
+                            onRefresh={props.onRefresh}
+                            onRetryMessage={props.onRetryMessage}
+                            onFlushPending={props.onFlushPending}
+                            onAtBottomChange={props.onAtBottomChange}
+                            isLoadingMessages={props.isLoadingMessages}
+                            messagesWarning={props.messagesWarning}
+                            hasMoreMessages={props.hasMoreMessages}
+                            isLoadingMoreMessages={props.isLoadingMoreMessages}
+                            onLoadMore={props.onLoadMore}
+                            pendingCount={props.pendingCount}
+                            rawMessagesCount={props.messages.length}
+                            normalizedMessagesCount={normalizedMessages.length}
+                            messagesVersion={props.messagesVersion}
+                            forceScrollToken={forceScrollToken}
+                        />
 
-                    <HappyComposer
-                        disabled={props.isSending || controlsDisabled}
-                        permissionMode={props.session.permissionMode}
-                        modelMode={props.session.modelMode}
-                        agentFlavor={agentFlavor}
-                        active={props.session.active}
-                        thinking={props.session.thinking}
-                        agentState={props.session.agentState}
-                        contextSize={reduced.latestUsage?.contextSize}
-                        controlledByUser={props.session.agentState?.controlledByUser === true}
-                        onPermissionModeChange={handlePermissionModeChange}
-                        onModelModeChange={handleModelModeChange}
-                        onSwitchToRemote={handleSwitchToRemote}
-                        onTerminal={props.session.active ? handleViewTerminal : undefined}
-                        autocompleteSuggestions={props.autocompleteSuggestions}
-                        voiceStatus={voice?.status}
-                        voiceMicMuted={voice?.micMuted}
-                        onVoiceToggle={voice ? handleVoiceToggle : undefined}
-                        onVoiceMicToggle={voice ? handleVoiceMicToggle : undefined}
-                    />
-                </div>
+                        <HappyComposer
+                            disabled={props.isSending || controlsDisabled}
+                            permissionMode={props.session.permissionMode}
+                            modelMode={props.session.modelMode}
+                            agentFlavor={agentFlavor}
+                            active={props.session.active}
+                            thinking={props.session.thinking}
+                            agentState={props.session.agentState}
+                            contextSize={reduced.latestUsage?.contextSize}
+                            controlledByUser={props.session.agentState?.controlledByUser === true}
+                            onPermissionModeChange={handlePermissionModeChange}
+                            onModelModeChange={handleModelModeChange}
+                            onSwitchToRemote={handleSwitchToRemote}
+                            onTerminal={props.session.active ? handleViewTerminal : undefined}
+                            autocompleteSuggestions={props.autocompleteSuggestions}
+                            voiceStatus={voice?.status}
+                            voiceMicMuted={voice?.micMuted}
+                            onVoiceToggle={voice ? handleVoiceToggle : undefined}
+                            onVoiceMicToggle={voice ? handleVoiceMicToggle : undefined}
+                        />
+                    </div>
+                </HappyChatProvider>
             </AssistantRuntimeProvider>
 
             {/* Voice session component - renders nothing but initializes ElevenLabs */}
