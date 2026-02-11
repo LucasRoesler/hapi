@@ -8,6 +8,8 @@
  * it will be saved to settings.json for future use
  */
 
+import { existsSync } from 'node:fs'
+import { resolve, isAbsolute } from 'node:path'
 import { getSettingsFile, readSettings, writeSettings } from './settings'
 
 export interface ServerSettings {
@@ -212,14 +214,48 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         basePaths = process.env.HAPI_BASE_PATHS
             .split(',')
             .map(p => p.trim())
-            .filter(Boolean)
+            .filter(p => {
+                // Validate each base path (security fix #8)
+                if (!p) return false
+
+                // Must be absolute path
+                if (!isAbsolute(p)) {
+                    console.warn(`[Config] Skipping relative base path: ${p}`)
+                    return false
+                }
+
+                // Normalize to absolute path
+                const normalized = resolve(p)
+
+                // Check if path exists
+                if (!existsSync(normalized)) {
+                    console.warn(`[Config] Skipping non-existent base path: ${normalized}`)
+                    return false
+                }
+
+                return true
+            })
+            .map(p => resolve(p)) // Normalize all paths
         sources.basePaths = 'env'
         if (settings.basePaths === undefined) {
             settings.basePaths = basePaths
             needsSave = true
         }
     } else if (settings.basePaths !== undefined) {
+        // Validate base paths from file as well
         basePaths = settings.basePaths
+            .filter(p => {
+                if (!isAbsolute(p)) {
+                    console.warn(`[Config] Skipping relative base path from settings: ${p}`)
+                    return false
+                }
+                if (!existsSync(p)) {
+                    console.warn(`[Config] Skipping non-existent base path from settings: ${p}`)
+                    return false
+                }
+                return true
+            })
+            .map(p => resolve(p))
         sources.basePaths = 'file'
     }
 

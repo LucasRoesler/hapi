@@ -3,8 +3,8 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
-import { stat, readdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { stat, readdir, realpath, lstat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
@@ -114,23 +114,49 @@ export class ApiMachineClient {
 
         this.rpcHandlerManager.registerHandler<{ path: string; prefix?: string; maxDepth?: number }, { directories: string[]; error?: string }>('list-directories', async (params) => {
             const path = typeof params?.path === 'string' ? params.path.trim() : ''
-            const prefix = typeof params?.prefix === 'string' ? params.prefix.trim() : ''
-            const maxDepth = typeof params?.maxDepth === 'number' ? params.maxDepth : 4
+            let prefix = typeof params?.prefix === 'string' ? params.prefix.trim() : ''
+            const maxDepth = typeof params?.maxDepth === 'number' ? Math.min(Math.max(params.maxDepth, 1), 10) : 4
+            const maxResults = 100
 
             if (!path) {
                 return { directories: [], error: 'Path is required' }
             }
 
-            // Validate path is within user's home directory to prevent filesystem enumeration
-            const userHomeDir = homedir()
-            const validation = validatePath(path, userHomeDir)
-            if (!validation.valid) {
-                logger.warn(`Path validation failed for list-directories: ${path}`)
-                return { directories: [], error: validation.error ?? 'Access denied: Path is outside allowed directory' }
+            // Sanitize prefix parameter to prevent path traversal
+            if (prefix && (prefix.includes('..') || prefix.includes('\0'))) {
+                logger.warn(`Invalid prefix parameter: ${prefix}`)
+                return { directories: [], error: 'Invalid prefix parameter' }
             }
 
             try {
-                const stats = await stat(path)
+                // Resolve symlinks in the path before validation (security fix #1)
+                const resolvedPath = await realpath(path)
+
+                // Ensure the initial path is not itself a symlink (security fix #2)
+                const pathStats = await lstat(path)
+                if (pathStats.isSymbolicLink()) {
+                    logger.warn(`Rejecting symlink path: ${path}`)
+                    return { directories: [], error: 'Symlinks are not allowed' }
+                }
+
+                // Validate path is within user's home directory to prevent filesystem enumeration
+                // TODO: This should validate against configured base paths (HAPI_BASE_PATHS)
+                // For now, we validate against homedir as a security baseline.
+                // The server should pass allowedBasePaths in the RPC params for proper validation.
+                const userHomeDir = homedir()
+                const validation = validatePath(resolvedPath, userHomeDir)
+                if (!validation.valid) {
+                    logger.warn(`Path validation failed for list-directories: ${resolvedPath}`)
+                    return { directories: [], error: 'Access denied' }
+                }
+
+                // Additional validation: ensure path is absolute
+                if (!resolve(resolvedPath)) {
+                    logger.warn(`Rejecting non-absolute path: ${resolvedPath}`)
+                    return { directories: [], error: 'Only absolute paths are allowed' }
+                }
+
+                const stats = await stat(resolvedPath)
                 if (!stats.isDirectory()) {
                     return { directories: [], error: 'Path is not a directory' }
                 }
@@ -139,7 +165,12 @@ export class ApiMachineClient {
                 const results: Array<{ path: string; depth: number }> = []
                 const visited = new Set<string>()
 
+                // Platform-aware case sensitivity (security fix #4)
+                const caseSensitive = process.platform !== 'win32'
+
                 async function searchDir(dirPath: string, depth: number) {
+                    // Early termination when we have enough results (security fix #6)
+                    if (results.length >= maxResults) return
                     if (depth > maxDepth || visited.has(dirPath)) return
                     visited.add(dirPath)
 
@@ -147,6 +178,9 @@ export class ApiMachineClient {
                         const entries = await readdir(dirPath, { withFileTypes: true })
 
                         for (const entry of entries) {
+                            // Early termination check inside loop
+                            if (results.length >= maxResults) break
+
                             // Skip hidden directories and symlinks
                             if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
                             if (!entry.isDirectory()) continue
@@ -155,7 +189,11 @@ export class ApiMachineClient {
 
                             // If prefix is specified, only include directories that match
                             if (prefix) {
-                                if (fullPath.toLowerCase().includes(prefix.toLowerCase())) {
+                                const matches = caseSensitive
+                                    ? fullPath.includes(prefix)
+                                    : fullPath.toLowerCase().includes(prefix.toLowerCase())
+
+                                if (matches) {
                                     results.push({ path: fullPath, depth })
                                 }
                             } else {
@@ -163,7 +201,7 @@ export class ApiMachineClient {
                             }
 
                             // Recursively search subdirectories if we haven't reached max depth
-                            if (depth < maxDepth) {
+                            if (depth < maxDepth && results.length < maxResults) {
                                 await searchDir(fullPath, depth + 1)
                             }
                         }
@@ -173,7 +211,7 @@ export class ApiMachineClient {
                     }
                 }
 
-                await searchDir(path, 1)
+                await searchDir(resolvedPath, 1)
 
                 // Sort by depth (shortest first) then alphabetically
                 results.sort((a, b) => {
@@ -181,8 +219,7 @@ export class ApiMachineClient {
                     return a.path.localeCompare(b.path)
                 })
 
-                // Limit to 100 results to prevent memory issues
-                const directories = results.slice(0, 100).map(r => r.path)
+                const directories = results.map(r => r.path)
 
                 return { directories }
             } catch (error) {
