@@ -5,6 +5,7 @@ import { queryKeys } from '@/lib/query-keys'
 
 export function useMachines(api: ApiClient | null, enabled: boolean): {
     machines: Machine[]
+    basePaths: string[]
     isLoading: boolean
     error: string | null
     refetch: () => Promise<unknown>
@@ -22,6 +23,7 @@ export function useMachines(api: ApiClient | null, enabled: boolean): {
 
     return {
         machines: query.data?.machines ?? [],
+        basePaths: query.data?.basePaths ?? [],
         isLoading: query.isLoading,
         error: query.error instanceof Error ? query.error.message : query.error ? 'Failed to load machines' : null,
         refetch: query.refetch,

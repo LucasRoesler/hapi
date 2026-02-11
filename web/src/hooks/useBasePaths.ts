@@ -1,11 +1,11 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useMemo } from 'react'
 
 const STORAGE_KEY = 'hapi:basePaths'
 const MAX_BASE_PATHS_PER_MACHINE = 10
 
 type BasePathsMap = Record<string, string[]>
 
-export function useBasePaths() {
+export function useBasePaths(serverBasePaths: string[] = []) {
     const [basePathsMap, setBasePathsMap] = useState<BasePathsMap>(() => {
         try {
             const stored = localStorage.getItem(STORAGE_KEY)
@@ -29,8 +29,11 @@ export function useBasePaths() {
 
     const getBasePaths = useCallback((machineId: string | null): string[] => {
         if (!machineId) return []
-        return basePathsMap[machineId] ?? []
-    }, [basePathsMap])
+        const localPaths = basePathsMap[machineId] ?? []
+        // Combine server base paths with local paths, removing duplicates
+        const combined = [...serverBasePaths, ...localPaths]
+        return Array.from(new Set(combined))
+    }, [basePathsMap, serverBasePaths])
 
     const setBasePaths = useCallback((machineId: string, paths: string[]) => {
         setBasePathsMap((prev) => ({

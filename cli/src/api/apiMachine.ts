@@ -112,8 +112,11 @@ export class ApiMachineClient {
             return { exists }
         })
 
-        this.rpcHandlerManager.registerHandler<{ path: string }, { directories: string[]; error?: string }>('list-directories', async (params) => {
+        this.rpcHandlerManager.registerHandler<{ path: string; prefix?: string; maxDepth?: number }, { directories: string[]; error?: string }>('list-directories', async (params) => {
             const path = typeof params?.path === 'string' ? params.path.trim() : ''
+            const prefix = typeof params?.prefix === 'string' ? params.prefix.trim() : ''
+            const maxDepth = typeof params?.maxDepth === 'number' ? params.maxDepth : 4
+
             if (!path) {
                 return { directories: [], error: 'Path is required' }
             }
@@ -132,17 +135,54 @@ export class ApiMachineClient {
                     return { directories: [], error: 'Path is not a directory' }
                 }
 
-                const entries = await readdir(path, { withFileTypes: true })
-                const directories = entries
-                    .filter(entry => {
-                        // Skip hidden directories and symlinks
-                        if (entry.name.startsWith('.')) return false
-                        if (entry.isSymbolicLink()) return false
-                        return entry.isDirectory()
-                    })
-                    .map(entry => join(path, entry.name))
-                    .slice(0, 100)  // Limit to 100 directories to prevent memory issues
-                    .sort()
+                // Recursively search directories up to maxDepth
+                const results: Array<{ path: string; depth: number }> = []
+                const visited = new Set<string>()
+
+                async function searchDir(dirPath: string, depth: number) {
+                    if (depth > maxDepth || visited.has(dirPath)) return
+                    visited.add(dirPath)
+
+                    try {
+                        const entries = await readdir(dirPath, { withFileTypes: true })
+
+                        for (const entry of entries) {
+                            // Skip hidden directories and symlinks
+                            if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
+                            if (!entry.isDirectory()) continue
+
+                            const fullPath = join(dirPath, entry.name)
+
+                            // If prefix is specified, only include directories that match
+                            if (prefix) {
+                                if (fullPath.toLowerCase().includes(prefix.toLowerCase())) {
+                                    results.push({ path: fullPath, depth })
+                                }
+                            } else {
+                                results.push({ path: fullPath, depth })
+                            }
+
+                            // Recursively search subdirectories if we haven't reached max depth
+                            if (depth < maxDepth) {
+                                await searchDir(fullPath, depth + 1)
+                            }
+                        }
+                    } catch (error) {
+                        // Skip directories we can't read (permissions, etc.)
+                        logger.debug(`Failed to read directory ${dirPath}:`, error)
+                    }
+                }
+
+                await searchDir(path, 1)
+
+                // Sort by depth (shortest first) then alphabetically
+                results.sort((a, b) => {
+                    if (a.depth !== b.depth) return a.depth - b.depth
+                    return a.path.localeCompare(b.path)
+                })
+
+                // Limit to 100 results to prevent memory issues
+                const directories = results.slice(0, 100).map(r => r.path)
 
                 return { directories }
             } catch (error) {

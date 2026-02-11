@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
+import { getConfiguration } from '../../configuration'
 
 const spawnBodySchema = z.object({
     directory: z.string().min(1),
@@ -18,7 +19,9 @@ const pathsExistsSchema = z.object({
 })
 
 const listDirectoriesSchema = z.object({
-    path: z.string().min(1)
+    path: z.string().min(1),
+    prefix: z.string().optional(),
+    maxDepth: z.number().int().min(1).max(10).optional()
 })
 
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
@@ -32,7 +35,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const namespace = c.get('namespace')
         const machines = engine.getOnlineMachinesByNamespace(namespace)
-        return c.json({ machines })
+        const config = getConfiguration()
+        return c.json({ machines, basePaths: config.basePaths })
     })
 
     app.post('/machines/:id/spawn', async (c) => {
@@ -115,7 +119,12 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const directories = await engine.listDirectories(machineId, parsed.data.path)
+            const directories = await engine.listDirectories(
+                machineId,
+                parsed.data.path,
+                parsed.data.prefix,
+                parsed.data.maxDepth
+            )
             return c.json({ directories })
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to list directories' }, 500)

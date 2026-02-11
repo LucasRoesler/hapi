@@ -681,8 +681,8 @@ export class SyncEngine {
         return await this.rpcGateway.checkPathsExist(machineId, paths)
     }
 
-    async listDirectories(machineId: string, path: string): Promise<string[]> {
-        return await this.rpcGateway.listDirectories(machineId, path)
+    async listDirectories(machineId: string, path: string, prefix?: string, maxDepth?: number): Promise<string[]> {
+        return await this.rpcGateway.listDirectories(machineId, path, prefix, maxDepth)
     }
 
     async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {

@@ -16,11 +16,11 @@ import { MachineSelector } from './MachineSelector'
 import { ModelSelector } from './ModelSelector'
 import { SessionTypeSelector } from './SessionTypeSelector'
 import { YoloToggle } from './YoloToggle'
-import { BasePathSelector } from './BasePathSelector'
 
 export function NewSession(props: {
     api: ApiClient
     machines: Machine[]
+    serverBasePaths?: string[]
     isLoading?: boolean
     onSuccess: (sessionId: string) => void
     onCancel: () => void
@@ -30,7 +30,7 @@ export function NewSession(props: {
     const { sessions } = useSessions(props.api)
     const isFormDisabled = Boolean(isPending || props.isLoading)
     const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
-    const { getBasePaths } = useBasePaths()
+    const { getBasePaths } = useBasePaths(props.serverBasePaths ?? [])
 
     const [machineId, setMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
@@ -117,7 +117,35 @@ export function NewSession(props: {
     )
 
     const getSuggestions = useCallback(async (query: string): Promise<Suggestion[]> => {
+        if (!machineId || !props.api) return []
+
         const lowered = query.toLowerCase()
+
+        // Check if the query starts with any base path
+        const matchingBasePath = basePaths.find(bp => query.startsWith(bp))
+
+        if (matchingBasePath && query.length > matchingBasePath.length) {
+            // User is typing under a base path - fetch subdirectories recursively
+            try {
+                const result = await props.api.listMachineDirectories(machineId, matchingBasePath, {
+                    prefix: query,
+                    maxDepth: 4
+                })
+
+                return result.directories
+                    .slice(0, 8)
+                    .map((path) => ({
+                        key: path,
+                        text: path,
+                        label: path
+                    }))
+            } catch (error) {
+                console.error('Failed to fetch subdirectories:', error)
+                // Fall back to verified paths
+            }
+        }
+
+        // Default: show verified paths that match
         return verifiedPaths
             .filter((path) => path.toLowerCase().includes(lowered))
             .slice(0, 8)
@@ -126,7 +154,7 @@ export function NewSession(props: {
                 text: path,
                 label: path
             }))
-    }, [verifiedPaths])
+    }, [verifiedPaths, basePaths, machineId, props.api])
 
     const activeQuery = (!isDirectoryFocused || suppressSuggestions) ? null : directory
 
@@ -253,15 +281,6 @@ export function NewSession(props: {
                 onSuggestionSelect={handleSuggestionSelect}
                 onPathClick={handlePathClick}
             />
-            {basePaths.length > 0 && (
-                <BasePathSelector
-                    machineId={machineId}
-                    basePaths={basePaths}
-                    api={props.api}
-                    onSelectPath={handlePathClick}
-                    isDisabled={isFormDisabled}
-                />
-            )}
             <SessionTypeSelector
                 sessionType={sessionType}
                 worktreeName={worktreeName}

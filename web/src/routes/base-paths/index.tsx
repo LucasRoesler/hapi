@@ -67,15 +67,16 @@ function PlusIcon(props: { className?: string }) {
 export default function BasePathsPage() {
     const goBack = useAppGoBack()
     const { api } = useAppContext()
-    const { machines } = useMachines(api, true)
-    const { getBasePaths, addBasePath, removeBasePath } = useBasePaths()
+    const { machines, basePaths: serverBasePaths } = useMachines(api, true)
+    const { getBasePaths, addBasePath, removeBasePath } = useBasePaths(serverBasePaths)
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [newPath, setNewPath] = useState('')
     const [isAdding, setIsAdding] = useState(false)
 
     const selectedMachine = machines.find(m => m.id === selectedMachineId) ?? machines[0] ?? null
     const currentMachineId = selectedMachine?.id ?? null
-    const basePaths = currentMachineId ? getBasePaths(currentMachineId) : []
+    const allBasePaths = currentMachineId ? getBasePaths(currentMachineId) : []
+    const localBasePaths = allBasePaths.filter(p => !serverBasePaths.includes(p))
 
     const handleAddPath = useCallback(() => {
         if (!currentMachineId || !newPath.trim()) return
@@ -130,13 +131,29 @@ export default function BasePathsPage() {
                                 </select>
                             </div>
 
-                            {/* Base paths list */}
+                            {/* Server base paths (read-only) */}
+                            {serverBasePaths.length > 0 && (
+                                <div className="border-b border-[var(--app-divider)]">
+                                    <div className="px-3 py-2 text-xs font-semibold text-[var(--app-hint)] uppercase tracking-wide">
+                                        Server Base Paths (Read-Only)
+                                    </div>
+                                    <div className="flex flex-col divide-y divide-[var(--app-divider)]">
+                                        {serverBasePaths.map((path) => (
+                                            <div key={path} className="flex items-center gap-3 px-3 py-2">
+                                                <span className="flex-1 text-sm truncate text-[var(--app-hint)]">{path}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Local base paths list */}
                             <div className="border-b border-[var(--app-divider)]">
                                 <div className="px-3 py-2 flex items-center justify-between">
                                     <div className="text-xs font-semibold text-[var(--app-hint)] uppercase tracking-wide">
-                                        Base Paths ({basePaths.length}/10)
+                                        Local Base Paths ({localBasePaths.length}/10)
                                     </div>
-                                    {!isAdding && basePaths.length < 10 && (
+                                    {!isAdding && localBasePaths.length < 10 && (
                                         <button
                                             type="button"
                                             onClick={() => setIsAdding(true)}
@@ -185,13 +202,13 @@ export default function BasePathsPage() {
                                     </div>
                                 )}
 
-                                {basePaths.length === 0 && !isAdding ? (
+                                {localBasePaths.length === 0 && !isAdding ? (
                                     <div className="px-3 py-6 text-center text-sm text-[var(--app-hint)]">
-                                        No base paths configured. Add paths to enable quick navigation when creating sessions.
+                                        No local base paths configured. Add paths to enable quick navigation when creating sessions.
                                     </div>
                                 ) : (
                                     <div className="flex flex-col divide-y divide-[var(--app-divider)]">
-                                        {basePaths.map((path) => (
+                                        {localBasePaths.map((path) => (
                                             <div key={path} className="flex items-center gap-3 px-3 py-2 hover:bg-[var(--app-subtle-bg)] transition-colors">
                                                 <span className="flex-1 text-sm truncate">{path}</span>
                                                 <button

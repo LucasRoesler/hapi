@@ -17,6 +17,7 @@ export interface ServerSettings {
     listenPort: number
     publicUrl: string
     corsOrigins: string[]
+    basePaths: string[]
 }
 
 export interface ServerSettingsResult {
@@ -28,6 +29,7 @@ export interface ServerSettingsResult {
         listenPort: 'env' | 'file' | 'default'
         publicUrl: 'env' | 'file' | 'default'
         corsOrigins: 'env' | 'file' | 'default'
+        basePaths: 'env' | 'file' | 'default'
     }
     savedToFile: boolean
 }
@@ -91,6 +93,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         listenPort: 'default',
         publicUrl: 'default',
         corsOrigins: 'default',
+        basePaths: 'default',
     }
     // telegramBotToken: env > file > null
     let telegramBotToken: string | null = null
@@ -203,6 +206,23 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         corsOrigins = deriveCorsOrigins(publicUrl)
     }
 
+    // basePaths: env > file > empty array
+    let basePaths: string[] = []
+    if (process.env.HAPI_BASE_PATHS) {
+        basePaths = process.env.HAPI_BASE_PATHS
+            .split(',')
+            .map(p => p.trim())
+            .filter(Boolean)
+        sources.basePaths = 'env'
+        if (settings.basePaths === undefined) {
+            settings.basePaths = basePaths
+            needsSave = true
+        }
+    } else if (settings.basePaths !== undefined) {
+        basePaths = settings.basePaths
+        sources.basePaths = 'file'
+    }
+
     // Save settings if any new values were added
     if (needsSave) {
         await writeSettings(settingsFile, settings)
@@ -216,6 +236,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
             listenPort,
             publicUrl,
             corsOrigins,
+            basePaths,
         },
         sources,
         savedToFile: needsSave,
