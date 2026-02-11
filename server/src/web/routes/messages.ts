@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { AttachmentMetadataSchema } from '@hapi/protocol/schemas'
 import { z } from 'zod'
+import type { Store } from '../../store'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
@@ -16,7 +17,7 @@ const sendMessageBodySchema = z.object({
     attachments: z.array(AttachmentMetadataSchema).optional()
 })
 
-export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
+export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null, getStore: () => Store | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
     app.get('/sessions/:id/messages', async (c) => {
@@ -84,6 +85,13 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             // Delete all messages from database
             const count = engine.clearSessionMessages(sessionId)
 
+            // Clear draft when clearing messages
+            const store = getStore()
+            if (store) {
+                const { namespace } = c.get('auth')
+                store.drafts.clearDraft(sessionId, namespace)
+            }
+
             // Still send /clear to CLI so it can clear its context
             await engine.sendMessage(sessionId, {
                 text: parsed.data.text,
@@ -100,6 +108,14 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             attachments: parsed.data.attachments,
             sentFrom: 'webapp'
         })
+
+        // Clear draft after successful send
+        const store = getStore()
+        if (store) {
+            const { namespace } = c.get('auth')
+            store.drafts.clearDraft(sessionId, namespace)
+        }
+
         return c.json({ ok: true })
     })
 

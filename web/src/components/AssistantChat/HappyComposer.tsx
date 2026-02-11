@@ -29,6 +29,8 @@ import { ComposerButtons } from '@/components/AssistantChat/ComposerButtons'
 import { AttachmentItem } from '@/components/AssistantChat/AttachmentItem'
 import { useTranslation } from '@/lib/use-translation'
 import { CloseIcon } from '@/components/icons'
+import { useHappyChatContext } from './context'
+import { useDraftPersistence } from '@/hooks/useDraftPersistence'
 
 type ComposerMode = 'quick' | 'expanded'
 type SnapIndex = 0 | 1 | 2
@@ -93,6 +95,7 @@ export function HappyComposer(props: {
     const modelMode = rawModelMode ?? 'default'
 
     const api = useAssistantApi()
+    const { sessionId, api: apiClient } = useHappyChatContext()
     const composerText = useAssistantState(({ composer }) => composer.text)
     const attachments = useAssistantState(({ composer }) => composer.attachments)
     const threadIsRunning = useAssistantState(({ thread }) => thread.isRunning)
@@ -129,6 +132,15 @@ export function HappyComposer(props: {
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const prevControlledByUser = useRef(controlledByUser)
+
+    // Draft persistence: restore, auto-save, and clear
+    const { clearDraft } = useDraftPersistence({
+        sessionId,
+        text: composerText,
+        apiClient,
+        assistantApi: api,
+        enabled: active
+    })
 
     useEffect(() => {
         setInputState((prev) => {
@@ -594,9 +606,11 @@ export function HappyComposer(props: {
     const showAbortButton = true
     const voiceEnabled = Boolean(onVoiceToggle)
 
-    const handleSend = useCallback(() => {
+    const handleSend = useCallback(async () => {
         api.composer().send()
-    }, [api])
+        // Clear draft using hook (handles both local and server)
+        await clearDraft()
+    }, [api, clearDraft])
 
     const overlays = useMemo(() => {
         if (showSettings && (showPermissionSettings || showModelSettings)) {
