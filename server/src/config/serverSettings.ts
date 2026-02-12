@@ -209,27 +209,18 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
     }
 
     // basePaths: env > file > empty array
+    // Note: Paths are validated on CLI machines where they actually exist
     let basePaths: string[] = []
     if (process.env.HAPI_BASE_PATHS) {
         basePaths = process.env.HAPI_BASE_PATHS
             .split(',')
             .map(p => p.trim())
             .filter(p => {
-                // Validate each base path (security fix #8)
                 if (!p) return false
 
                 // Must be absolute path
                 if (!isAbsolute(p)) {
                     console.warn(`[Config] Skipping relative base path: ${p}`)
-                    return false
-                }
-
-                // Normalize to absolute path
-                const normalized = resolve(p)
-
-                // Check if path exists
-                if (!existsSync(normalized)) {
-                    console.warn(`[Config] Skipping non-existent base path: ${normalized}`)
                     return false
                 }
 
@@ -242,15 +233,11 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
             needsSave = true
         }
     } else if (settings.basePaths !== undefined) {
-        // Validate base paths from file as well
+        // Validate base paths from file - only check if absolute
         basePaths = settings.basePaths
             .filter(p => {
                 if (!isAbsolute(p)) {
                     console.warn(`[Config] Skipping relative base path from settings: ${p}`)
-                    return false
-                }
-                if (!existsSync(p)) {
-                    console.warn(`[Config] Skipping non-existent base path from settings: ${p}`)
                     return false
                 }
                 return true
