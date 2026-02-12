@@ -77,8 +77,8 @@ export function NewSession(props: {
     )
 
     const basePaths = useMemo(
-        () => getBasePaths(machineId),
-        [getBasePaths, machineId]
+        () => getBasePaths(),
+        [getBasePaths]
     )
 
     const allPaths = useDirectorySuggestions(machineId, sessions, recentPaths)
@@ -141,8 +141,10 @@ export function NewSession(props: {
             return [...basePathSuggestions, ...recentPathSuggestions]
         }
 
-        // Check if the query starts with any base path
-        const matchingBasePath = basePaths.find(bp => query.startsWith(bp))
+        // Check if the query is typing under a base path
+        const matchingBasePath = basePaths.find(bp =>
+            query === bp || query.startsWith(bp + '/')
+        )
 
         if (matchingBasePath && query.length > matchingBasePath.length) {
             // User is typing under a base path - fetch subdirectories recursively
