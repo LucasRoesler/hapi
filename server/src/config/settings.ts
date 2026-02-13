@@ -18,6 +18,7 @@ export interface Settings {
     listenPort?: number
     publicUrl?: string
     corsOrigins?: string[]
+    basePaths?: string[]
     // Legacy field names (for migration, read-only)
     webappHost?: string
     webappPort?: number

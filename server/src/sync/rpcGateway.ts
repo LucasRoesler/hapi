@@ -280,8 +280,12 @@ export class RpcGateway {
         return exists
     }
 
-    async listDirectories(machineId: string, path: string): Promise<string[]> {
-        const result = await this.machineRpc(machineId, 'list-directories', { path }) as { directories: string[]; error?: string } | unknown
+    async listDirectories(machineId: string, path: string, prefix?: string, maxDepth?: number): Promise<string[]> {
+        const params: { path: string; prefix?: string; maxDepth?: number } = { path }
+        if (prefix) params.prefix = prefix
+        if (maxDepth !== undefined) params.maxDepth = maxDepth
+
+        const result = await this.machineRpc(machineId, 'list-directories', params) as { directories: string[]; error?: string } | unknown
         if (!result || typeof result !== 'object') {
             throw new Error('Unexpected list-directories result')
         }

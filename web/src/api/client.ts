@@ -425,13 +425,18 @@ export class ApiClient {
 
     async listMachineDirectories(
         machineId: string,
-        path: string
+        path: string,
+        options?: { prefix?: string; maxDepth?: number }
     ): Promise<{ directories: string[] }> {
+        const body: { path: string; prefix?: string; maxDepth?: number } = { path }
+        if (options?.prefix) body.prefix = options.prefix
+        if (options?.maxDepth !== undefined) body.maxDepth = options.maxDepth
+
         return await this.request<{ directories: string[] }>(
             `/api/machines/${encodeURIComponent(machineId)}/paths/list-directories`,
             {
                 method: 'POST',
-                body: JSON.stringify({ path })
+                body: JSON.stringify(body)
             }
         )
     }

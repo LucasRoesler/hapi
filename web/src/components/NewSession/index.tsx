@@ -16,11 +16,11 @@ import { MachineSelector } from './MachineSelector'
 import { ModelSelector } from './ModelSelector'
 import { SessionTypeSelector } from './SessionTypeSelector'
 import { YoloToggle } from './YoloToggle'
-import { BasePathSelector } from './BasePathSelector'
 
 export function NewSession(props: {
     api: ApiClient
     machines: Machine[]
+    serverBasePaths?: string[]
     isLoading?: boolean
     onSuccess: (sessionId: string) => void
     onCancel: () => void
@@ -30,7 +30,7 @@ export function NewSession(props: {
     const { sessions } = useSessions(props.api)
     const isFormDisabled = Boolean(isPending || props.isLoading)
     const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
-    const { getBasePaths } = useBasePaths()
+    const { getBasePaths } = useBasePaths(props.serverBasePaths ?? [])
 
     const [machineId, setMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
@@ -43,6 +43,8 @@ export function NewSession(props: {
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
     const [error, setError] = useState<string | null>(null)
+    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+    const [autocompleteError, setAutocompleteError] = useState<string | null>(null)
     const worktreeInputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
@@ -77,8 +79,8 @@ export function NewSession(props: {
     )
 
     const basePaths = useMemo(
-        () => getBasePaths(machineId),
-        [getBasePaths, machineId]
+        () => getBasePaths(),
+        [getBasePaths]
     )
 
     const allPaths = useDirectorySuggestions(machineId, sessions, recentPaths)
@@ -117,7 +119,91 @@ export function NewSession(props: {
     )
 
     const getSuggestions = useCallback(async (query: string): Promise<Suggestion[]> => {
+        if (!machineId || !props.api) return []
+
         const lowered = query.toLowerCase()
+
+        // If query is empty, show base paths first, then recent paths
+        if (!query.trim()) {
+            const basePathSuggestions = basePaths.map((path) => ({
+                key: path,
+                text: path,
+                label: path
+            }))
+
+            const recentPathSuggestions = verifiedPaths
+                .filter((path) => !basePaths.includes(path))
+                .slice(0, 8 - basePathSuggestions.length)
+                .map((path) => ({
+                    key: path,
+                    text: path,
+                    label: path
+                }))
+
+            return [...basePathSuggestions, ...recentPathSuggestions]
+        }
+
+        // Check if the query is typing under a base path
+        const matchingBasePath = basePaths.find(bp =>
+            query === bp || query.startsWith(bp + '/')
+        )
+
+        if (matchingBasePath && query.length > matchingBasePath.length) {
+            // User is typing under a base path - fetch subdirectories recursively
+            setIsLoadingSuggestions(true)
+            setAutocompleteError(null)
+
+            try {
+                const result = await props.api.listMachineDirectories(machineId, matchingBasePath, {
+                    prefix: query,
+                    maxDepth: 5
+                })
+
+                setIsLoadingSuggestions(false)
+
+                // Show more results (up to 15) to help with multi-level navigation
+                return result.directories
+                    .slice(0, 15)
+                    .map((path) => ({
+                        key: path,
+                        text: path,
+                        label: path
+                    }))
+            } catch (error) {
+                console.error('Failed to fetch subdirectories:', error)
+                setIsLoadingSuggestions(false)
+
+                // Set appropriate error message
+                if (error instanceof Error) {
+                    if (error.message.toLowerCase().includes('timeout')) {
+                        setAutocompleteError('Search timed out. Try a shorter path.')
+                    } else if (error.message.toLowerCase().includes('denied')) {
+                        setAutocompleteError('Path not found or access denied.')
+                    } else {
+                        setAutocompleteError('Could not load suggestions. Check your connection.')
+                    }
+                } else {
+                    setAutocompleteError('Could not load suggestions. Check your connection.')
+                }
+
+                // Fall back to verified paths
+            }
+        }
+
+        // Check if query partially matches any base path (user is typing a base path)
+        const partialBasePathMatches = basePaths.filter((path) =>
+            path.toLowerCase().startsWith(lowered)
+        )
+
+        if (partialBasePathMatches.length > 0) {
+            return partialBasePathMatches.map((path) => ({
+                key: path,
+                text: path,
+                label: path
+            }))
+        }
+
+        // Default: show verified paths that match
         return verifiedPaths
             .filter((path) => path.toLowerCase().includes(lowered))
             .slice(0, 8)
@@ -126,14 +212,14 @@ export function NewSession(props: {
                 text: path,
                 label: path
             }))
-    }, [verifiedPaths])
+    }, [verifiedPaths, basePaths, machineId, props.api])
 
     const activeQuery = (!isDirectoryFocused || suppressSuggestions) ? null : directory
 
     const [suggestions, selectedIndex, moveUp, moveDown, clearSuggestions] = useActiveSuggestions(
         activeQuery,
         getSuggestions,
-        { allowEmptyQuery: true, autoSelectFirst: false }
+        { allowEmptyQuery: true, autoSelectFirst: false, debounceMs: 150 }
     )
 
     const handleMachineChange = useCallback((newMachineId: string) => {
@@ -162,7 +248,10 @@ export function NewSession(props: {
     const handleDirectoryChange = useCallback((value: string) => {
         setSuppressSuggestions(false)
         setDirectory(value)
-    }, [])
+        if (autocompleteError) {
+            setAutocompleteError(null) // Auto-dismiss error when user types
+        }
+    }, [autocompleteError])
 
     const handleDirectoryFocus = useCallback(() => {
         setSuppressSuggestions(false)
@@ -246,22 +335,16 @@ export function NewSession(props: {
                 selectedIndex={selectedIndex}
                 isDisabled={isFormDisabled}
                 recentPaths={recentPaths}
+                isLoadingSuggestions={isLoadingSuggestions}
+                autocompleteError={autocompleteError}
                 onDirectoryChange={handleDirectoryChange}
                 onDirectoryFocus={handleDirectoryFocus}
                 onDirectoryBlur={handleDirectoryBlur}
                 onDirectoryKeyDown={handleDirectoryKeyDown}
                 onSuggestionSelect={handleSuggestionSelect}
                 onPathClick={handlePathClick}
+                onDismissError={() => setAutocompleteError(null)}
             />
-            {basePaths.length > 0 && (
-                <BasePathSelector
-                    machineId={machineId}
-                    basePaths={basePaths}
-                    api={props.api}
-                    onSelectPath={handlePathClick}
-                    isDisabled={isFormDisabled}
-                />
-            )}
             <SessionTypeSelector
                 sessionType={sessionType}
                 worktreeName={worktreeName}

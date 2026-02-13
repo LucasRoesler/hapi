@@ -237,7 +237,7 @@ function NewSessionPage() {
     const navigate = useNavigate()
     const goBack = useAppGoBack()
     const queryClient = useQueryClient()
-    const { machines, isLoading: machinesLoading, error: machinesError } = useMachines(api, true)
+    const { machines, basePaths, isLoading: machinesLoading, error: machinesError } = useMachines(api, true)
 
     const handleCancel = useCallback(() => {
         navigate({ to: '/sessions' })
@@ -280,6 +280,7 @@ function NewSessionPage() {
             <NewSession
                 api={api}
                 machines={machines}
+                serverBasePaths={basePaths}
                 isLoading={machinesLoading}
                 onCancel={handleCancel}
                 onSuccess={handleSuccess}

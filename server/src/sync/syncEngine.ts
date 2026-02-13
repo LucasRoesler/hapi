@@ -18,6 +18,7 @@ import { MachineCache, type Machine } from './machineCache'
 import { MessageService } from './messageService'
 import { RpcGateway, type RpcCommandResponse, type RpcPathExistsResponse, type RpcReadFileResponse, type RpcUploadFileResponse, type RpcDeleteUploadResponse } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { getConfiguration } from '../configuration'
 
 export type { Session, SyncEvent } from '@hapi/protocol/types'
 export type { Machine } from './machineCache'
@@ -681,8 +682,20 @@ export class SyncEngine {
         return await this.rpcGateway.checkPathsExist(machineId, paths)
     }
 
-    async listDirectories(machineId: string, path: string): Promise<string[]> {
-        return await this.rpcGateway.listDirectories(machineId, path)
+    async listDirectories(machineId: string, path: string, prefix?: string, maxDepth?: number): Promise<string[]> {
+        const directories = await this.rpcGateway.listDirectories(machineId, path, prefix, maxDepth)
+
+        // Filter by base paths (autocomplete only - validation remains in CLI)
+        const config = getConfiguration()
+        if (config.basePaths.length === 0) {
+            return directories
+        }
+
+        return directories.filter(dir => {
+            return config.basePaths.some((basePath: string) => {
+                return dir === basePath || dir.startsWith(basePath + '/')
+            })
+        })
     }
 
     async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {
