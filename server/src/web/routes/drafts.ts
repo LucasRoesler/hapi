@@ -23,7 +23,7 @@ export function createDraftsRoutes(getStore: () => Store | null): Hono<WebAppEnv
         const namespace = c.get('namespace')
 
         // Verify session access (namespace check)
-        const session = store.sessions.getSession(sessionId, namespace)
+        const session = store.sessions.getSessionByNamespace(sessionId, namespace)
         if (!session) {
             return c.json({ error: 'Session not found' }, 404)
         }
@@ -48,7 +48,7 @@ export function createDraftsRoutes(getStore: () => Store | null): Hono<WebAppEnv
             return c.json({ error: 'Invalid body', details: parsed.error }, 400)
         }
 
-        const session = store.sessions.getSession(sessionId, namespace)
+        const session = store.sessions.getSessionByNamespace(sessionId, namespace)
         if (!session) {
             return c.json({ error: 'Session not found' }, 404)
         }
@@ -69,7 +69,7 @@ export function createDraftsRoutes(getStore: () => Store | null): Hono<WebAppEnv
         const sessionId = c.req.param('id')
         const namespace = c.get('namespace')
 
-        const session = store.sessions.getSession(sessionId, namespace)
+        const session = store.sessions.getSessionByNamespace(sessionId, namespace)
         if (!session) {
             return c.json({ error: 'Session not found' }, 404)
         }

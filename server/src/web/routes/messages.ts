@@ -88,7 +88,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null, get
             // Clear draft when clearing messages
             const store = getStore()
             if (store) {
-                const { namespace } = c.get('auth')
+                const namespace = c.get('namespace')
                 store.drafts.clearDraft(sessionId, namespace)
             }
 
@@ -112,7 +112,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null, get
         // Clear draft after successful send
         const store = getStore()
         if (store) {
-            const { namespace } = c.get('auth')
+            const namespace = c.get('namespace')
             store.drafts.clearDraft(sessionId, namespace)
         }
 
