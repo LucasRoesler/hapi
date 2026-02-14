@@ -11,6 +11,8 @@ NC='\033[0m' # No Color
 
 # Default values
 BUILD_FROM_SOURCE=false
+SKIP_BUILD=false
+DRY_RUN=false
 INSTALL_PATH="$HOME/.local/bin"
 SETUP_SYSTEMD=true
 SETUP_TAILSCALE=false
@@ -18,6 +20,7 @@ TAILSCALE_SERVICE=""
 HAPI_PORT=3006
 SERVICE_NAME="hapi"
 SKIP_CONFIRMATION=false
+BASE_PATHS=""  # Comma-separated absolute paths (empty = will prompt if interactive)
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,12 +50,15 @@ Usage: $0 [OPTIONS]
 
 OPTIONS:
     -b, --build              Build from source before installing
+    --skip-build             Skip binary installation, only update systemd services
+    --dry-run                Show what would be done without making changes
     -n, --name NAME          Service name (default: hapi)
     -p, --path PATH          Installation path (default: ~/.local/bin)
     -s, --skip-systemd       Skip systemd service setup
     -t, --tailscale          Setup Tailscale serve for remote access
     --ts-service NAME        Tailscale service name for preconfigured service binding
     --port PORT              Port for Hapi server (default: 3006)
+    -d, --base-paths PATHS   Comma-separated absolute paths for file access (default: interactive prompt)
     -y, --yes                Skip confirmation prompts
     -h, --help               Show this help message
 
@@ -72,6 +78,15 @@ EXAMPLES:
     # Install with Tailscale serve using a named service (preconfigured in Tailscale admin)
     $0 --tailscale --ts-service svc:hapi
 
+    # Install with specific base paths
+    $0 --base-paths "/home/user/projects,/home/user/documents"
+
+    # Update service configuration without reinstalling binary
+    $0 --skip-build --base-paths "/home/user/newpath"
+
+    # Preview generated service files without making changes
+    $0 --dry-run --base-paths "/home/user/projects"
+
     # Custom installation path without systemd
     $0 --path /usr/local/bin --skip-systemd
 
@@ -83,6 +98,14 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -b|--build)
             BUILD_FROM_SOURCE=true
+            shift
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
             shift
             ;;
         -n|--name)
@@ -107,6 +130,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --port)
             HAPI_PORT="$2"
+            shift 2
+            ;;
+        -d|--base-paths)
+            BASE_PATHS="$2"
             shift 2
             ;;
         -y|--yes)
@@ -168,6 +195,64 @@ check_dependencies() {
     fi
 
     print_success "All dependencies satisfied"
+}
+
+# Validate and normalize base paths
+validate_base_paths() {
+    local input_paths="$1"
+    local validated_paths=""
+
+    # Split by comma and process each path
+    IFS=',' read -ra PATHS <<< "$input_paths"
+    for path in "${PATHS[@]}"; do
+        # Trim whitespace
+        path=$(echo "$path" | xargs)
+
+        # Skip empty
+        if [ -z "$path" ]; then
+            continue
+        fi
+
+        # Expand tilde if present
+        path="${path/#\~/$HOME}"
+
+        # Check if absolute
+        if [[ "$path" != /* ]]; then
+            print_warning "Skipping relative path: $path (must be absolute)"
+            continue
+        fi
+
+        # Add to validated list
+        if [ -z "$validated_paths" ]; then
+            validated_paths="$path"
+        else
+            validated_paths="$validated_paths,$path"
+        fi
+    done
+
+    echo "$validated_paths"
+}
+
+# Prompt for base paths interactively
+prompt_base_paths() {
+    if [ "$SKIP_CONFIRMATION" = true ]; then
+        # In non-interactive mode, use HOME as default
+        echo "$HOME"
+        return
+    fi
+
+    print_info "Configure base paths for file access"
+    echo "  Base paths are directories that HAPI can access."
+    echo "  Enter comma-separated absolute paths, or press Enter for default ($HOME)"
+    echo ""
+    read -p "Base paths: " -r user_input
+
+    # Use HOME as default if empty
+    if [ -z "$user_input" ]; then
+        echo "$HOME"
+    else
+        echo "$user_input"
+    fi
 }
 
 # Build from source
@@ -282,22 +367,18 @@ rollback_binary() {
     print_info "Monitor with: journalctl --user -u ${SERVICE_NAME}-runner.service -f"
 }
 
-# Setup systemd services
-setup_systemd() {
-    print_info "Setting up systemd services..."
+# Generate server service file content (without writing to disk)
+generate_server_service() {
+    local hapi_binary="$1"
+    local service_name="$2"
+    local hapi_port="$3"
+    local install_path="$4"
+    local base_paths="$5"
+    local user_path="$6"
 
-    local systemd_user_dir="$HOME/.config/systemd/user"
-    mkdir -p "$systemd_user_dir"
-
-    local hapi_binary="$INSTALL_PATH/hapi"
-    local server_service="${SERVICE_NAME}-server.service"
-    local runner_service="${SERVICE_NAME}-runner.service"
-
-    # Generate server service
-    print_info "Creating $server_service..."
-    cat > "$systemd_user_dir/$server_service" << EOF
+    cat << EOF
 [Unit]
-Description=$SERVICE_NAME Server (Local Mode)
+Description=$service_name Server (Local Mode)
 After=network.target
 
 [Service]
@@ -307,22 +388,30 @@ Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
-Environment="HAPI_LISTEN_PORT=$HAPI_PORT"
-Environment="PATH=$INSTALL_PATH:$PATH"
+Environment="HAPI_LISTEN_PORT=$hapi_port"
+Environment="PATH=$user_path"
 Environment="TERM=xterm-256color"
 Environment="COLUMNS=80"
 Environment="PROMPT_COMMAND="
+Environment="HAPI_BASE_PATHS=$base_paths"
 Environment="PS1=[\\\\u@\\\\h \\\\W]\\\\$ "
 
 [Install]
 WantedBy=default.target
 EOF
+}
 
-    # Generate runner service
-    print_info "Creating $runner_service..."
-    cat > "$systemd_user_dir/$runner_service" << EOF
+# Generate runner service file content (without writing to disk)
+generate_runner_service() {
+    local hapi_binary="$1"
+    local service_name="$2"
+    local server_service="$3"
+    local install_path="$4"
+    local user_path="$5"
+
+    cat << EOF
 [Unit]
-Description=$SERVICE_NAME Runner (Claude Code Execution)
+Description=$service_name Runner (Claude Code Execution)
 After=$server_service
 Requires=$server_service
 PartOf=$server_service
@@ -335,7 +424,7 @@ Restart=always
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
-Environment="PATH=$INSTALL_PATH:$PATH"
+Environment="PATH=$user_path"
 Environment="TERM=xterm-256color"
 Environment="COLUMNS=80"
 Environment="PROMPT_COMMAND="
@@ -344,31 +433,236 @@ Environment="PS1=[\\\\u@\\\\h \\\\W]\\\\$ "
 [Install]
 WantedBy=default.target
 EOF
+}
 
-    # Reload systemd
-    print_info "Reloading systemd daemon..."
-    systemctl --user daemon-reload
+# Check if service file differs from new content
+# Returns: 0 if different, 1 if same or doesn't exist
+check_service_diff() {
+    local service_file="$1"
+    local new_content="$2"
 
-    # Enable and start services
-    print_info "Enabling services..."
-    systemctl --user enable "$server_service"
-    systemctl --user enable "$runner_service"
+    if [ ! -f "$service_file" ]; then
+        return 1  # No existing file, no diff
+    fi
 
-    print_success "Systemd services created and enabled"
+    # Compare existing with new content
+    if diff -q "$service_file" <(echo "$new_content") >/dev/null 2>&1; then
+        return 1  # Files are the same
+    else
+        return 0  # Files differ
+    fi
+}
 
-    # Ask to start services now
-    if [ "$SKIP_CONFIRMATION" = false ]; then
-        read -p "Start $SERVICE_NAME services now? (y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            start_services
+# Show diff between existing and new service file
+show_service_diff() {
+    local service_name="$1"
+    local service_file="$2"
+    local new_content="$3"
+
+    echo ""
+    echo -e "${YELLOW}Changes to $service_name:${NC}"
+    echo "----------------------------------------"
+
+    # Use diff with color if available, fall back to plain diff
+    if diff --color=auto -u "$service_file" <(echo "$new_content") 2>/dev/null; then
+        # diff returned 0 (no diff), shouldn't happen here
+        :
+    else
+        # Files differ or diff doesn't support --color
+        diff -u "$service_file" <(echo "$new_content") 2>/dev/null || \
+            diff "$service_file" <(echo "$new_content") || true
+    fi
+
+    echo "----------------------------------------"
+    echo ""
+}
+
+# Prompt user to confirm override
+# Returns: 0 to proceed, 1 to skip
+confirm_override() {
+    local service_name="$1"
+
+    if [ "$SKIP_CONFIRMATION" = true ]; then
+        print_warning "Overwriting existing $service_name (--yes flag)"
+        return 0
+    fi
+
+    read -p "Override $service_name? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Backup existing service file
+backup_service_file() {
+    local service_file="$1"
+    local backup_file="${service_file}.prev"
+
+    if [ -f "$service_file" ]; then
+        print_info "Backing up to ${backup_file}"
+        cp "$service_file" "$backup_file"
+    fi
+}
+
+# Check if service is currently running
+is_service_running() {
+    local service_name="$1"
+
+    if systemctl --user is-active --quiet "$service_name" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Setup systemd services
+setup_systemd() {
+    print_info "Setting up systemd services..."
+
+    local systemd_user_dir="$HOME/.config/systemd/user"
+    mkdir -p "$systemd_user_dir"
+
+    local hapi_binary="$INSTALL_PATH/hapi"
+    local server_service="${SERVICE_NAME}-server.service"
+    local runner_service="${SERVICE_NAME}-runner.service"
+    local server_service_file="$systemd_user_dir/$server_service"
+    local runner_service_file="$systemd_user_dir/$runner_service"
+
+    # Determine and validate base paths
+    local base_paths_input=""
+    if [ -n "$BASE_PATHS" ]; then
+        base_paths_input="$BASE_PATHS"
+    else
+        base_paths_input=$(prompt_base_paths)
+    fi
+
+    # Validate and normalize
+    local normalized_paths=$(validate_base_paths "$base_paths_input")
+
+    if [ -z "$normalized_paths" ]; then
+        print_warning "No valid base paths configured"
+    else
+        print_info "Base paths: $normalized_paths"
+    fi
+
+    # Capture user's current PATH to preserve in service
+    local user_path="$PATH"
+    print_info "Preserving user PATH: $user_path"
+
+    # Generate new service file contents
+    local new_server_content=$(generate_server_service "$hapi_binary" "$SERVICE_NAME" "$HAPI_PORT" "$INSTALL_PATH" "$normalized_paths" "$user_path")
+    local new_runner_content=$(generate_runner_service "$hapi_binary" "$SERVICE_NAME" "$server_service" "$INSTALL_PATH" "$user_path")
+
+    # If dry-run, show generated service files and exit
+    if [ "$DRY_RUN" = true ]; then
+        echo ""
+        echo "========================================"
+        echo "  DRY RUN - Generated Service Files"
+        echo "========================================"
+        echo ""
+        echo -e "${GREEN}$server_service:${NC}"
+        echo "----------------------------------------"
+        echo "$new_server_content"
+        echo ""
+        echo -e "${GREEN}$runner_service:${NC}"
+        echo "----------------------------------------"
+        echo "$new_runner_content"
+        echo ""
+        print_info "Dry run complete. No changes were made."
+        return 0
+    fi
+
+    # Check if services are currently running (before any changes)
+    local server_was_running=false
+    local runner_was_running=false
+    if is_service_running "$server_service"; then
+        server_was_running=true
+    fi
+    if is_service_running "$runner_service"; then
+        runner_was_running=true
+    fi
+
+    # Handle server service
+    local server_changed=false
+    if check_service_diff "$server_service_file" "$new_server_content"; then
+        print_warning "Existing $server_service differs from new configuration"
+        show_service_diff "$server_service" "$server_service_file" "$new_server_content"
+
+        if confirm_override "$server_service"; then
+            backup_service_file "$server_service_file"
+            print_info "Creating $server_service..."
+            echo "$new_server_content" > "$server_service_file"
+            server_changed=true
         else
-            print_info "To start services later, run:"
-            echo "    systemctl --user start $server_service"
-            echo "    systemctl --user start $runner_service"
+            print_info "Keeping existing $server_service"
         fi
     else
-        start_services
+        print_info "Creating $server_service..."
+        echo "$new_server_content" > "$server_service_file"
+        server_changed=true
+    fi
+
+    # Handle runner service
+    local runner_changed=false
+    if check_service_diff "$runner_service_file" "$new_runner_content"; then
+        print_warning "Existing $runner_service differs from new configuration"
+        show_service_diff "$runner_service" "$runner_service_file" "$new_runner_content"
+
+        if confirm_override "$runner_service"; then
+            backup_service_file "$runner_service_file"
+            print_info "Creating $runner_service..."
+            echo "$new_runner_content" > "$runner_service_file"
+            runner_changed=true
+        else
+            print_info "Keeping existing $runner_service"
+        fi
+    else
+        print_info "Creating $runner_service..."
+        echo "$new_runner_content" > "$runner_service_file"
+        runner_changed=true
+    fi
+
+    # Only reload and enable if changes were made
+    if [ "$server_changed" = true ] || [ "$runner_changed" = true ]; then
+        print_info "Reloading systemd daemon..."
+        systemctl --user daemon-reload
+
+        print_info "Enabling services..."
+        systemctl --user enable "$server_service" 2>/dev/null || true
+        systemctl --user enable "$runner_service" 2>/dev/null || true
+
+        print_success "Systemd services updated"
+
+        # Warn if services were running and config changed
+        if [ "$server_was_running" = true ] || [ "$runner_was_running" = true ]; then
+            echo ""
+            print_warning "Services were running when configuration was changed"
+            print_info "Restart services to apply changes:"
+            echo "    systemctl --user restart $server_service"
+            echo ""
+        fi
+    else
+        print_info "No service changes made"
+    fi
+
+    # Ask to start services now (if not already running)
+    if [ "$server_was_running" = false ] && [ "$runner_was_running" = false ]; then
+        if [ "$SKIP_CONFIRMATION" = false ]; then
+            read -p "Start $SERVICE_NAME services now? (y/n) " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                start_services
+            else
+                print_info "To start services later, run:"
+                echo "    systemctl --user start $server_service"
+                echo "    systemctl --user start $runner_service"
+            fi
+        else
+            start_services
+        fi
     fi
 }
 
@@ -484,6 +778,8 @@ main() {
     print_info "Installation Configuration:"
     echo "  Service name: $SERVICE_NAME"
     echo "  Build from source: $BUILD_FROM_SOURCE"
+    echo "  Skip build: $SKIP_BUILD"
+    echo "  Dry run: $DRY_RUN"
     echo "  Installation path: $INSTALL_PATH"
     echo "  Setup systemd: $SETUP_SYSTEMD"
     echo "  Setup Tailscale: $SETUP_TAILSCALE"
@@ -504,11 +800,15 @@ main() {
 
     check_dependencies
 
-    if [ "$BUILD_FROM_SOURCE" = true ]; then
-        build_from_source
-    fi
+    if [ "$SKIP_BUILD" = false ]; then
+        if [ "$BUILD_FROM_SOURCE" = true ]; then
+            build_from_source
+        fi
 
-    install_binary
+        install_binary
+    else
+        print_info "Skipping build and binary installation (--skip-build flag)"
+    fi
 
     if [ "$SETUP_SYSTEMD" = true ]; then
         setup_systemd
