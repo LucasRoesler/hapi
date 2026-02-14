@@ -384,7 +384,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=$hapi_binary server --no-relay
-Restart=on-failure
+Restart=always
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
