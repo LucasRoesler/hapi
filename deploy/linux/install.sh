@@ -309,6 +309,10 @@ StandardOutput=journal
 StandardError=journal
 Environment="HAPI_LISTEN_PORT=$HAPI_PORT"
 Environment="PATH=$INSTALL_PATH:$PATH"
+Environment="TERM=xterm-256color"
+Environment="COLUMNS=80"
+Environment="PROMPT_COMMAND="
+Environment="PS1=[\\u@\\h \\W]\\$ "
 
 [Install]
 WantedBy=default.target
@@ -332,6 +336,10 @@ RestartSec=5s
 StandardOutput=journal
 StandardError=journal
 Environment="PATH=$INSTALL_PATH:$PATH"
+Environment="TERM=xterm-256color"
+Environment="COLUMNS=80"
+Environment="PROMPT_COMMAND="
+Environment="PS1=[\\u@\\h \\W]\\$ "
 
 [Install]
 WantedBy=default.target
