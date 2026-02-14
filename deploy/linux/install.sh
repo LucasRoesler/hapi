@@ -374,6 +374,7 @@ generate_server_service() {
     local hapi_port="$3"
     local install_path="$4"
     local base_paths="$5"
+    local user_path="$6"
 
     cat << EOF
 [Unit]
@@ -388,7 +389,7 @@ RestartSec=5s
 StandardOutput=journal
 StandardError=journal
 Environment="HAPI_LISTEN_PORT=$hapi_port"
-Environment="PATH=$install_path:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+Environment="PATH=$user_path"
 Environment="TERM=xterm-256color"
 Environment="COLUMNS=80"
 Environment="PROMPT_COMMAND="
@@ -406,6 +407,7 @@ generate_runner_service() {
     local service_name="$2"
     local server_service="$3"
     local install_path="$4"
+    local user_path="$5"
 
     cat << EOF
 [Unit]
@@ -422,7 +424,7 @@ Restart=always
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
-Environment="PATH=$install_path:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+Environment="PATH=$user_path"
 Environment="TERM=xterm-256color"
 Environment="COLUMNS=80"
 Environment="PROMPT_COMMAND="
@@ -546,9 +548,13 @@ setup_systemd() {
         print_info "Base paths: $normalized_paths"
     fi
 
+    # Capture user's current PATH to preserve in service
+    local user_path="$PATH"
+    print_info "Preserving user PATH: $user_path"
+
     # Generate new service file contents
-    local new_server_content=$(generate_server_service "$hapi_binary" "$SERVICE_NAME" "$HAPI_PORT" "$INSTALL_PATH" "$normalized_paths")
-    local new_runner_content=$(generate_runner_service "$hapi_binary" "$SERVICE_NAME" "$server_service" "$INSTALL_PATH")
+    local new_server_content=$(generate_server_service "$hapi_binary" "$SERVICE_NAME" "$HAPI_PORT" "$INSTALL_PATH" "$normalized_paths" "$user_path")
+    local new_runner_content=$(generate_runner_service "$hapi_binary" "$SERVICE_NAME" "$server_service" "$INSTALL_PATH" "$user_path")
 
     # If dry-run, show generated service files and exit
     if [ "$DRY_RUN" = true ]; then
