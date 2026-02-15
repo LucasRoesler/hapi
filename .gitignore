@@ -42,3 +42,6 @@ execplan/
 # Generated npm bundle output (local)
 cli/npm/main/
 .worktrees/
+
+# Temporary files and scripts
+temp/
